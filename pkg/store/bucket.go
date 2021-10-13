@@ -94,7 +94,7 @@ const (
 	// not too small (too much memory).
 	DefaultPostingOffsetInMemorySampling = 32
 
-	PartitionerMaxGapSize = 512 * 1024
+	PartitionerMaxGapSize = 128 * 1024
 
 	// Labels for metrics.
 	labelEncode = "encode"
@@ -2981,6 +2981,7 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 
 		r.block.chunkPool.Put(nb)
 	}
+
 	return nil
 }
 
