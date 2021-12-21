@@ -8,6 +8,12 @@ NOTE: As semantic versioning states all 0.y.z releases can contain breaking chan
 
 We use *breaking :warning:* to mark changes that are not backward compatible (relates only to v0.y.z releases.)
 
+## Performance
+
+### Added
+
+- [#4290](https://github.com/thanos-io/thanos/pull/4290) proxy: coalesce multiple requests for the same data; greatly improves performance when opening a dashboard without query-frontend where there are a lot of different panels (queries) asking for the same data
+
 ## Unreleased
 - [#5453](https://github.com/thanos-io/thanos/pull/5453) Compact: Skip erroneous empty non `*AggrChunk` chunks during 1h downsampling of 5m resolution blocks.
 
