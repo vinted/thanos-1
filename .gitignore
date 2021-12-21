@@ -34,3 +34,4 @@ examples/tmp/
 
 # Ignore the MacOS Trash (DS-Store)
 .DS_Store
+.goreleaser.yml
