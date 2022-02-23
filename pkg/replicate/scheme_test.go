@@ -20,11 +20,18 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 
-	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
+	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/testutil"
+)
+
+var (
+	minTime         = time.Unix(0, 0)
+	maxTime, _      = time.Parse(time.RFC3339, "9999-12-31T23:59:59Z")
+	minTimeDuration = model.TimeOrDurationValue{Time: &minTime}
+	maxTimeDuration = model.TimeOrDurationValue{Time: &maxTime}
 )
 
 func testLogger(testName string) log.Logger {
@@ -62,14 +69,24 @@ func testMeta(ulid ulid.ULID) *metadata.Meta {
 	}
 }
 
+func testDeletionMark(ulid ulid.ULID) *metadata.DeletionMark {
+	return &metadata.DeletionMark{
+		ID:           ulid,
+		Version:      metadata.DeletionMarkVersion1,
+		Details:      "tests deletion mark",
+		DeletionTime: time.Time{}.Unix(),
+	}
+}
+
 func TestReplicationSchemeAll(t *testing.T) {
 	testBlockID := testULID(0)
 	var cases = []struct {
-		name     string
-		selector labels.Selector
-		blockIDs []ulid.ULID
-		prepare  func(ctx context.Context, t *testing.T, originBucket, targetBucket *objstore.InMemBucket)
-		assert   func(ctx context.Context, t *testing.T, originBucket, targetBucket *objstore.InMemBucket)
+		name                    string
+		selector                labels.Selector
+		blockIDs                []ulid.ULID
+		ignoreMarkedForDeletion bool
+		prepare                 func(ctx context.Context, t *testing.T, originBucket, targetBucket *objstore.InMemBucket)
+		assert                  func(ctx context.Context, t *testing.T, originBucket, targetBucket *objstore.InMemBucket)
 	}{
 		{
 			name:    "EmptyOrigin",
@@ -114,6 +131,27 @@ func TestReplicationSchemeAll(t *testing.T) {
 				if len(targetBucket.Objects()) != 3 {
 					t.Fatal("TargetBucket should have one block made up of three objects replicated.")
 				}
+			},
+		},
+		{
+			name:                    "MarkedForDeletion",
+			ignoreMarkedForDeletion: true,
+			prepare: func(ctx context.Context, t *testing.T, originBucket, targetBucket *objstore.InMemBucket) {
+				ulid := testULID(0)
+				meta := testMeta(ulid)
+				deletionMark := testDeletionMark(ulid)
+
+				b, err := json.Marshal(meta)
+				testutil.Ok(t, err)
+				d, err := json.Marshal(deletionMark)
+				testutil.Ok(t, err)
+				_ = originBucket.Upload(ctx, path.Join(ulid.String(), "meta.json"), bytes.NewReader(b))
+				_ = originBucket.Upload(ctx, path.Join(ulid.String(), "deletion-mark.json"), bytes.NewReader(d))
+				_ = originBucket.Upload(ctx, path.Join(ulid.String(), "chunks", "000001"), bytes.NewReader(nil))
+				_ = originBucket.Upload(ctx, path.Join(ulid.String(), "index"), bytes.NewReader(nil))
+			},
+			assert: func(ctx context.Context, t *testing.T, originBucket, targetBucket *objstore.InMemBucket) {
+				testutil.Equals(t, map[string][]byte{}, targetBucket.Objects())
 			},
 		},
 		{
@@ -344,7 +382,14 @@ func TestReplicationSchemeAll(t *testing.T) {
 		}
 
 		filter := NewBlockFilter(logger, selector, []compact.ResolutionLevel{compact.ResolutionLevelRaw}, []int{1}, c.blockIDs).Filter
-		fetcher, err := block.NewMetaFetcher(logger, 32, objstore.WithNoopInstr(originBucket), "", nil, nil)
+		fetcher, err := newMetaFetcher(
+			logger, objstore.WithNoopInstr(originBucket),
+			nil,
+			minTimeDuration,
+			maxTimeDuration,
+			32,
+			c.ignoreMarkedForDeletion,
+		)
 		testutil.Ok(t, err)
 
 		r := newReplicationScheme(logger, newReplicationMetrics(nil), filter, fetcher, objstore.WithNoopInstr(originBucket), targetBucket, nil)

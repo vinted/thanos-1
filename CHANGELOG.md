@@ -31,16 +31,25 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#4974](https://github.com/thanos-io/thanos/pull/4974) Store: Support tls_config configuration for connecting with Azure storage.
 - [#4999](https://github.com/thanos-io/thanos/pull/4999) COS: Support `endpoint` configuration for vpc internal endpoint.
 - [#5059](https://github.com/thanos-io/thanos/pull/5059) Compactor: Adding minimum retention flag validation for downsampling retention.
+- [#4667](https://github.com/thanos-io/thanos/pull/4667) Add a pure aws-sdk auth for s3 storage.
 - [#5111](https://github.com/thanos-io/thanos/pull/5111) Add matcher support to Query Rules endpoint.
+- [#5117](https://github.com/thanos-io/thanos/pull/5117) Bucket replicate: Added flag `--ignore-marked-for-deletion` to avoid replication of blocks with the deletion mark.
+- [#5148](https://github.com/thanos-io/thanos/pull/5148) Receive: Add tenant tag for tracing spans.
+
+## Changed
+- [#5144](https://github.com/thanos-io/thanos/pull/5144) UI: Improve graph color
+- [#5119](https://github.com/thanos-io/thanos/pull/5119) UI: Optimize Target, Alert and Service Discovery page and on each of them add a search bar.
 
 ### Fixed
 
+- [#5102](https://github.com/thanos-io/thanos/pull/5102) Fix: Filter block rows in bucket UI according to searched block ID
 - [#5051](https://github.com/thanos-io/thanos/pull/5051) Prober: Remove spam of changing probe status.
 - [#4918](https://github.com/thanos-io/thanos/pull/4918) Tracing: Fixing force tracing with Jaeger.
 - [#4879](https://github.com/thanos-io/thanos/pull/4879) Bucket verify: Fixed bug causing wrong number of blocks to be checked.
 - [#4908](https://github.com/thanos-io/thanos/pull/4908) UI: Show 'minus' icon and add tooltip when store min / max time is not available.
 - [#4883](https://github.com/thanos-io/thanos/pull/4883) Mixin: adhere to RFC 1123 compatible component naming.
 - [#5114](https://github.com/thanos-io/thanos/pull/5114) Tools `thanos bucket inspect` fix time formatting.
+- [#5139](https://github.com/thanos-io/thanos/pull/5139) COS: Support multi-part upload, fix upload issue when index size more than 5GB.
 
 ## [v0.24.0](https://github.com/thanos-io/thanos/tree/release-0.24) - 2021.12.22
 
