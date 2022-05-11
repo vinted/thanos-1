@@ -372,6 +372,7 @@ func findMostMatchingKey(stores []Client, r *storepb.SeriesRequest, listeners *l
 		fmt.Fprintf(&sb, "%v", r.Aggregates)
 	}
 
+	fmt.Fprintf(&sb, "%v", r.QueryHints)
 	fmt.Fprintf(&sb, "%c", marker)
 
 	markers := 0
@@ -386,8 +387,6 @@ func findMostMatchingKey(stores []Client, r *storepb.SeriesRequest, listeners *l
 		}
 		fmt.Fprintf(&sb, "%s%c%s%c", m.Name, marker, m.Value, marker)
 	}
-
-	fmt.Fprintf(&sb, "%v", r.QueryHints)
 
 	_, ok := listeners.Get(sb.String())
 	// Easy path - direct match.
