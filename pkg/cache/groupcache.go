@@ -150,7 +150,7 @@ func NewGroupcacheWithConfig(logger log.Logger, reg prometheus.Registerer, conf 
 	galaxyhttp.RegisterHTTPHandler(universe, &galaxyhttp.HTTPOptions{
 		BasePath: basepath,
 	}, mux)
-	r.Get(filepath.Join(basepath, conf.GroupcacheGroup, ":key"), mux.ServeHTTP)
+	r.Get(filepath.Join(basepath, conf.GroupcacheGroup, "*key"), mux.ServeHTTP)
 
 	galaxy := universe.NewGalaxy(conf.GroupcacheGroup, int64(conf.MaxSize), galaxycache.GetterFunc(
 		func(ctx context.Context, id string, dest galaxycache.Codec) error {
@@ -281,7 +281,7 @@ func (c *Groupcache) Fetch(ctx context.Context, keys []string) map[string][]byte
 		codec := galaxycache.ByteCodec{}
 
 		if err := c.galaxy.Get(ctx, k, &codec); err != nil {
-			level.Error(c.logger).Log("msg", "failed fetching data from groupcache", "err", err, "key", k)
+			level.Debug(c.logger).Log("msg", "failed fetching data from groupcache", "err", err, "key", k)
 			continue
 		}
 
