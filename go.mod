@@ -216,8 +216,6 @@ replace (
 
 	// TODO: Remove this: https://github.com/thanos-io/thanos/issues/3967.
 	github.com/minio/minio-go/v7 => github.com/bwplotka/minio-go/v7 v7.0.11-0.20210324165441-f9927e5255a6
-	// Make sure Prometheus version is pinned as Prometheus semver does not include Go APIs.
-	github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20220308163432-03831554a519
 	github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
 
 	github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
@@ -232,3 +230,5 @@ replace (
 )
 
 go 1.17
+
+replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20220524113412-d964e8216559
