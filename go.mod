@@ -231,4 +231,4 @@ replace (
 
 go 1.17
 
-replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20220616093146-2a82103e105e
+replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20220616125815-f25d20ca6c1b
