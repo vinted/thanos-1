@@ -1139,6 +1139,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		begin := time.Now()
 		tracing.DoInSpan(ctx, "bucket_store_preload_all", func(_ context.Context) {
 			err = g.Wait()
+		}, tracing.Tags{
+			"matchers": matchers,
 		})
 		if err != nil {
 			code := codes.Aborted
