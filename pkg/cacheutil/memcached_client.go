@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/viney-shih/go-cache"
 	"gopkg.in/yaml.v2"
 
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -179,6 +180,8 @@ type memcachedClient struct {
 	client   memcachedClientBackend
 	selector updatableServerSelector
 
+	tLFU cache.Adapter
+
 	// Name provides an identifier for the instantiated Client
 	name string
 
@@ -275,7 +278,11 @@ func newMemcachedClient(
 		)
 	}
 
+	// 16KB (max) * 100000 = 1600MB.
+	tinyLfu := cache.NewTinyLFU(100000)
+
 	c := &memcachedClient{
+		tLFU:            tinyLfu,
 		logger:          log.With(logger, "name", name),
 		config:          config,
 		client:          client,
@@ -383,11 +390,15 @@ func (c *memcachedClient) Stop() {
 	c.workers.Wait()
 }
 
-func (c *memcachedClient) SetAsync(_ context.Context, key string, value []byte, ttl time.Duration) error {
+func (c *memcachedClient) SetAsync(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	// Skip hitting memcached at all if the item is bigger than the max allowed size.
 	if c.config.MaxItemSize > 0 && uint64(len(value)) > uint64(c.config.MaxItemSize) {
 		c.skipped.WithLabelValues(opSet, reasonMaxItemSize).Inc()
 		return nil
+	}
+
+	if err := c.tLFU.MSet(ctx, map[string][]byte{key: value}, ttl); err != nil {
+		level.Warn(c.logger).Log("msg", "failed to put item in tinyLFU", "key", key, "err", err.Error())
 	}
 
 	err := c.enqueueAsync(func() {
@@ -431,6 +442,34 @@ func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[strin
 		return nil
 	}
 
+	hits := map[string][]byte{}
+
+	// Check if they exist in memory.
+	values, err := c.tLFU.MGet(ctx, keys)
+	if err != nil {
+		level.Warn(c.logger).Log("msg", "failed to fetch items from tinyLFU", "err", err)
+	} else {
+		for i, v := range values {
+			if !v.Valid {
+				continue
+			}
+			hits[keys[i]] = v.Bytes
+		}
+		if len(hits) == len(keys) {
+			return hits
+		}
+
+		newKeys := make([]string, 0, len(keys)-len(hits))
+		for i, v := range values {
+			if v.Valid {
+				continue
+			}
+			newKeys = append(newKeys, keys[i])
+		}
+		keys = newKeys
+	}
+
+	// Ping memcached.
 	batches, err := c.getMultiBatched(ctx, keys)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "failed to fetch items from memcached", "numKeys", len(keys), "firstKey", keys[0], "err", err)
@@ -444,11 +483,16 @@ func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[strin
 		}
 	}
 
-	hits := map[string][]byte{}
+	memcachedHits := map[string][]byte{}
 	for _, items := range batches {
 		for key, item := range items {
-			hits[key] = item.Value
+			memcachedHits[key] = item.Value
 		}
+	}
+
+	// TODO: change this to be dynamic. 5 minutes because our current minimum TTL is 5 minutes in /opt/thanos/store_cachingbucket.yml.
+	if err := c.tLFU.MSet(ctx, memcachedHits, 5*time.Minute); err != nil {
+		level.Warn(c.logger).Log("msg", "failed to set items in tinyLFU", "numKeys", len(keys), "firstKey", keys[0], "err", err)
 	}
 
 	return hits

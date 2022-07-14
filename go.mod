@@ -98,6 +98,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
+require github.com/viney-shih/go-cache v1.1.4
+
 require (
 	cloud.google.com/go v0.99.0 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
@@ -153,7 +155,7 @@ require (
 	github.com/google/go-cmp v0.5.7 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/google/uuid v1.2.0 // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.1 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
@@ -187,12 +189,14 @@ require (
 	github.com/sony/gobreaker v0.4.1 // indirect
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
+	github.com/vmihailenco/go-tinylfu v0.2.2 // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20200816102855-ee81675732da // indirect
 	go.elastic.co/apm/module/apmhttp v1.11.0 // indirect
 	go.elastic.co/fastjson v1.1.0 // indirect
 	go.mongodb.org/mongo-driver v1.7.5 // indirect
 	go.opencensus.io v0.23.0 // indirect
+	golang.org/x/exp v0.0.0-20210526181343-b47a03e3048a // indirect
 	golang.org/x/mod v0.5.1 // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11 // indirect
