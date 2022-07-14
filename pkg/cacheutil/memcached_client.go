@@ -26,6 +26,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
+	"github.com/thanos-io/thanos/pkg/store/cache/cachekey"
 )
 
 const (
@@ -491,7 +492,12 @@ func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[strin
 	}
 
 	// TODO: change this to be dynamic. 5 minutes because our current minimum TTL is 5 minutes in /opt/thanos/store_cachingbucket.yml.
-	if err := c.tLFU.MSet(ctx, memcachedHits, 5*time.Minute); err != nil {
+	ttl := 5 * time.Minute
+	if strings.HasPrefix(keys[0], string(cachekey.SubrangeVerb)) {
+		ttl = 24 * time.Hour
+
+	}
+	if err := c.tLFU.MSet(ctx, memcachedHits, ttl); err != nil {
 		level.Warn(c.logger).Log("msg", "failed to set items in tinyLFU", "numKeys", len(keys), "firstKey", keys[0], "err", err)
 	}
 
