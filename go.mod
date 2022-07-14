@@ -102,6 +102,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require github.com/viney-shih/go-cache v1.1.4
+
 require (
 	cloud.google.com/go v0.102.0 // indirect
 	cloud.google.com/go/compute v1.7.0 // indirect
@@ -219,6 +221,7 @@ require (
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.34 // indirect
 	github.com/tklauser/go-sysconf v0.3.4 // indirect
 	github.com/tklauser/numcpus v0.2.1 // indirect
+	github.com/vmihailenco/go-tinylfu v0.2.2 // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20210529063254-f4c35e4016d9 // indirect
 	go.elastic.co/apm/module/apmhttp v1.11.0 // indirect
@@ -229,6 +232,7 @@ require (
 	go.opentelemetry.io/otel/metric v0.30.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
+	golang.org/x/exp v0.0.0-20210526181343-b47a03e3048a // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/oauth2 v0.0.0-20220628200809-02e64fa58f26 // indirect
 	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
