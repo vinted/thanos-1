@@ -280,7 +280,7 @@ func newMemcachedClient(
 	}
 
 	// 16KB (max) * 100000 = 1600MB.
-	tinyLfu := cache.NewTinyLFU(100000)
+	tinyLfu := cache.NewTinyLFU(500000)
 
 	c := &memcachedClient{
 		tLFU:            tinyLfu,
