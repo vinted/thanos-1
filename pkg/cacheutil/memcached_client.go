@@ -208,6 +208,9 @@ type memcachedClient struct {
 	skipped    *prometheus.CounterVec
 	duration   *prometheus.HistogramVec
 	dataSize   *prometheus.HistogramVec
+
+	tinyLFUhits     prometheus.Counter
+	tinyLFUaccesses prometheus.Counter
 }
 
 // AddressProvider performs node address resolution given a list of clusters.
@@ -280,7 +283,7 @@ func newMemcachedClient(
 	}
 
 	// 16KB (max) * 100000 = 1600MB.
-	tinyLfu := cache.NewTinyLFU(100000)
+	tinyLfu := cache.NewTinyLFU(500000)
 
 	c := &memcachedClient{
 		tLFU:            tinyLfu,
@@ -295,6 +298,14 @@ func newMemcachedClient(
 			extprom.WrapRegistererWithPrefix("thanos_memcached_getmulti_", reg),
 			config.MaxGetMultiConcurrency,
 		),
+		tinyLFUhits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "thanos_memcached_tinylfu_hits_total",
+			Help: "How many hits in TinyLFU",
+		}),
+		tinyLFUaccesses: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "thanos_memcached_tinylfu_accesses_total",
+			Help: "How many times TinyLFU has been accessed",
+		}),
 	}
 
 	c.clientInfo = promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
@@ -451,9 +462,11 @@ func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[strin
 		level.Warn(c.logger).Log("msg", "failed to fetch items from tinyLFU", "err", err)
 	} else {
 		for i, v := range values {
+			c.tinyLFUaccesses.Inc()
 			if !v.Valid {
 				continue
 			}
+			c.tinyLFUhits.Inc()
 			hits[keys[i]] = v.Bytes
 		}
 		if len(hits) == len(keys) {
@@ -495,8 +508,8 @@ func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[strin
 	ttl := 5 * time.Minute
 	if strings.HasPrefix(keys[0], string(cachekey.SubrangeVerb)) {
 		ttl = 24 * time.Hour
-
 	}
+
 	if err := c.tLFU.MSet(ctx, memcachedHits, ttl); err != nil {
 		level.Warn(c.logger).Log("msg", "failed to set items in tinyLFU", "numKeys", len(keys), "firstKey", keys[0], "err", err)
 	}
