@@ -331,6 +331,7 @@ func newMemcachedClient(
 	}, []string{"operation"})
 	c.operations.WithLabelValues(opGetMulti)
 	c.operations.WithLabelValues(opSet)
+	c.name = name
 
 	c.failures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "thanos_memcached_operation_failures_total",
@@ -506,10 +507,9 @@ func (c *memcachedClient) GetMulti(ctx context.Context, keys []string) map[strin
 
 	// TODO: change this to be dynamic. 5 minutes because our current minimum TTL is 5 minutes in /opt/thanos/store_cachingbucket.yml.
 	ttl := 5 * time.Minute
-	if strings.HasPrefix(keys[0], string(cachekey.SubrangeVerb)) {
+	if strings.HasPrefix(keys[0], string(cachekey.SubrangeVerb)) || c.name == "index-cache" {
 		ttl = 24 * time.Hour
 	}
-
 	if err := c.tLFU.MSet(ctx, memcachedHits, ttl); err != nil {
 		level.Warn(c.logger).Log("msg", "failed to set items in tinyLFU", "numKeys", len(keys), "firstKey", keys[0], "err", err)
 	}
