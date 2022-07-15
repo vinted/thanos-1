@@ -282,8 +282,15 @@ func newMemcachedClient(
 		)
 	}
 
-	// 16KB (max) * 100000 = 1600MB.
-	tinyLfu := cache.NewTinyLFU(500000)
+	var tinyLfu cache.Adapter
+	if name == "index-cache" {
+		// Index cache has very tiny values.
+		tinyLfu = cache.NewTinyLFU(2_000_000)
+	} else {
+		// 16KB (max) * 500000 = 5*1600MB ~ 9000MB.
+		tinyLfu = cache.NewTinyLFU(500_000)
+
+	}
 
 	c := &memcachedClient{
 		tLFU:            tinyLfu,
