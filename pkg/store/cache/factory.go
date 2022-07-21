@@ -22,6 +22,7 @@ const (
 	INMEMORY  IndexCacheProvider = "IN-MEMORY"
 	MEMCACHED IndexCacheProvider = "MEMCACHED"
 	REDIS     IndexCacheProvider = "REDIS"
+	RUEIDIS   IndexCacheProvider = "RUEIDIS"
 )
 
 // IndexCacheConfig specifies the index cache config.
@@ -52,6 +53,13 @@ func NewIndexCache(logger log.Logger, confContentYaml []byte, reg prometheus.Reg
 		memcached, err = cacheutil.NewMemcachedClient(logger, "index-cache", backendConfig, reg)
 		if err == nil {
 			cache, err = NewRemoteIndexCache(logger, memcached, reg)
+		}
+	case string(RUEIDIS):
+		var rueidis cacheutil.RemoteCacheClient
+
+		rueidis, err = cacheutil.NewRueidisClient(logger, "index-cache", backendConfig, reg)
+		if err == nil {
+			cache, err = NewRemoteIndexCache(logger, rueidis, reg)
 		}
 	case string(REDIS):
 		var redisCache cacheutil.RemoteCacheClient
