@@ -70,6 +70,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.7.1
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.39.1
+	github.com/rueian/rueidis v0.0.64
 	github.com/sony/gobreaker v0.5.0
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-community/promql-engine v0.0.0-20221004075442-da92170150df
@@ -265,6 +266,7 @@ require (
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/ini.v1 v1.66.6 // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
+
 )
 
 replace (
