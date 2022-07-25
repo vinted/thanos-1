@@ -129,13 +129,19 @@ func (c *RueidisClient) GetMulti(ctx context.Context, keys []string) map[string]
 	start := time.Now()
 	results := make(map[string][]byte, len(keys))
 
-	resps, err := c.client.DoCache(ctx, c.client.B().Mget().Key(keys...).Cache(), 8*time.Hour).ToArray()
+	if c.config.ReadTimeout > 0 {
+		timeoutCtx, cancel := context.WithTimeout(ctx, c.config.ReadTimeout)
+		defer cancel()
+		ctx = timeoutCtx
+	}
+
+	resps, err := rueidis.MGetCache(c.client, ctx, 8*time.Hour, keys)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "failed to mget items from redis", "err", err, "items", len(resps))
 	}
-	for i, resp := range resps {
+	for key, resp := range resps {
 		if val, err := resp.ToString(); err == nil {
-			results[keys[i]] = stringToBytes(val)
+			results[key] = stringToBytes(val)
 		}
 	}
 	c.durationGetMulti.Observe(time.Since(start).Seconds())

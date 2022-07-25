@@ -100,7 +100,7 @@ require (
 require github.com/viney-shih/go-cache v1.1.4
 
 require (
-	github.com/rueian/rueidis v0.0.64
+	github.com/rueian/rueidis v0.0.65
 	google.golang.org/protobuf v1.27.1
 )
 
