@@ -124,7 +124,7 @@ type RedisClientConfig struct {
 }
 
 func (c *RedisClientConfig) validate() error {
-	if c.Addr == "" {
+	if c.Addr == "" && len(c.Addrs) == 0 {
 		return errors.New("no redis addr provided")
 	}
 

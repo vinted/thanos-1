@@ -70,7 +70,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.7.1
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.39.1
-	github.com/rueian/rueidis v0.0.64
+	github.com/rueian/rueidis v0.0.69
 	github.com/sony/gobreaker v0.5.0
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-community/promql-engine v0.0.0-20221004075442-da92170150df
@@ -152,6 +152,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.1 // indirect
 	github.com/aws/smithy-go v1.11.1 // indirect
 	github.com/baidubce/bce-sdk-go v0.9.111 // indirect
+	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/chromedp/sysutil v1.0.0 // indirect
