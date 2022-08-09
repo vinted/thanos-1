@@ -260,3 +260,5 @@ replace (
 )
 
 go 1.17
+
+replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20220808145920-5c879a061105
