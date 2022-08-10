@@ -119,7 +119,6 @@ func NewCachingBucketFromYaml(yamlContent []byte, bucket objstore.Bucket, logger
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create groupcache")
 		}
-
 	case string(RedisBucketCacheProvider):
 		redisCache, err := cacheutil.NewRedisClient(logger, "caching-bucket", backendConfig, reg)
 		if err != nil {

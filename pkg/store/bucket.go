@@ -89,7 +89,7 @@ const (
 	// not too small (too much memory).
 	DefaultPostingOffsetInMemorySampling = 32
 
-	PartitionerMaxGapSize = 512 * 1024
+	PartitionerMaxGapSize = 128 * 1024
 
 	// Labels for metrics.
 	labelEncode = "encode"
@@ -1136,9 +1136,23 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 	// Concurrently get data from all blocks.
 	{
+		var sb strings.Builder
+
+		fmt.Fprint(&sb, "{")
+
+		for i, m := range matchers {
+			fmt.Fprint(&sb, m.String())
+			if i != len(matchers)-1 {
+				fmt.Fprint(&sb, ",")
+			}
+		}
+		fmt.Fprint(&sb, "}")
+
 		begin := time.Now()
 		tracing.DoInSpan(ctx, "bucket_store_preload_all", func(_ context.Context) {
 			err = g.Wait()
+		}, tracing.Tags{
+			"matchers": sb.String(),
 		})
 		if err != nil {
 			code := codes.Aborted
@@ -2631,6 +2645,7 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 
 		r.block.chunkPool.Put(nb)
 	}
+
 	return nil
 }
 
