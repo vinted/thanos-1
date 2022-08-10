@@ -30,6 +30,8 @@ echo "generating code"
 pushd "pkg"
 for dir in ${DIRS}; do
   ${PROTOC_BIN} --gogofast_out=Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,plugins=grpc:. \
+    --go-drpc_out=Mgoogle/protobuf/descriptor.proto=google.golang.org/protobuf/types/descriptorpb,Mstore/labelpb/types.proto=github.com/thanos-io/thanos/pkg/store/labelpb,Mstore/storepb/types.proto=github.com/thanos-io/thanos/pkg/store/storepb,Mstore/storepb/prompb/types.proto=github.com/thanos-io/thanos/pkg/store/storepb/prompb,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,Mstore/storepb/rpc.proto=github.com/thanos-io/thanos/pkg/store/storepb,Mstore/storepb/prompb/remote.proto=github.com/thanos-io/thanos/pkg/store/storepb/prompb,Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,Mrules/rulespb/rpc.proto=github.com/thanos-io/thanos/pkg/rules/rulespb,Mtargets/targetspb/rpc.proto=github.com/thanos-io/thanos/pkg/targets/targetspb,Mstore/hintspb/hints.proto=github.com/thanos-io/thanos/pkg/store/hintspb,Mqueryfrontend/response.proto=github.com/thanos-io/thanos/pkg/queryfrontend,Mmetadata/metadatapb/rpc.proto=github.com/thanos-io/thanos/pkg/metadata/metadatapb,Mexemplars/exemplarspb/rpc.proto=github.com/thanos-io/thanos/pkg/exemplars/exemplarspb,Minfo/infopb/rpc.proto=github.com/thanos-io/thanos/pkg/info/infopb,Mapi/query/querypb/query.proto=github.com/thanos-io/pkg/api/query/querypb:. \
+    --go-drpc_opt=paths=source_relative \
     -I=. \
     -I="${GOGOPROTO_PATH}" \
     ${dir}/*.proto
