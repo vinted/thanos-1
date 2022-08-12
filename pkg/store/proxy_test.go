@@ -11,11 +11,8 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
-
-	lru "github.com/hashicorp/golang-lru/simplelru"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
@@ -1784,14 +1781,11 @@ func benchProxySeries(t testutil.TB, totalSamples, totalSeries int) {
 	}
 
 	logger := log.NewNopLogger()
-	l, _ := lru.NewLRU(rlkLRUSize, nil)
 	store := &ProxyStore{
-		logger:               logger,
-		stores:               func() []Client { return clients },
-		metrics:              newProxyStoreMetrics(nil),
-		responseTimeout:      0,
-		requestListenersLRU:  l,
-		requestListenersLock: &sync.Mutex{},
+		logger:          logger,
+		stores:          func() []Client { return clients },
+		metrics:         newProxyStoreMetrics(nil),
+		responseTimeout: 0,
 	}
 
 	var allResps []*storepb.SeriesResponse
@@ -1816,13 +1810,7 @@ func benchProxySeries(t testutil.TB, totalSamples, totalSeries int) {
 	}
 
 	chunkLen := len(allResps[len(allResps)-1].GetSeries().Chunks)
-	var maxTime int64
-
-	if chunkLen == 0 {
-		maxTime = math.MaxInt64
-	} else {
-		maxTime = allResps[len(allResps)-1].GetSeries().Chunks[chunkLen-1].MaxTime
-	}
+	maxTime := allResps[len(allResps)-1].GetSeries().Chunks[chunkLen-1].MaxTime
 	storetestutil.TestServerSeries(t, store,
 		&storetestutil.SeriesCase{
 			Name: fmt.Sprintf("%d client with %d samples, %d series each", numOfClients, samplesPerSeriesPerClient, seriesPerClient),
@@ -1914,14 +1902,11 @@ func TestProxyStore_NotLeakingOnPrematureFinish(t *testing.T) {
 	}
 
 	logger := log.NewNopLogger()
-	l, _ := lru.NewLRU(rlkLRUSize, nil)
 	p := &ProxyStore{
-		logger:               logger,
-		stores:               func() []Client { return clients },
-		metrics:              newProxyStoreMetrics(nil),
-		responseTimeout:      0,
-		requestListenersLRU:  l,
-		requestListenersLock: &sync.Mutex{},
+		logger:          logger,
+		stores:          func() []Client { return clients },
+		metrics:         newProxyStoreMetrics(nil),
+		responseTimeout: 0,
 	}
 
 	t.Run("failling send", func(t *testing.T) {
@@ -1952,56 +1937,4 @@ func TestProxyStore_storeMatchMetadata(t *testing.T) {
 	ok, reason = storeMatchDebugMetadata(c, [][]*labels.Matcher{{labels.MustNewMatcher(labels.MatchEqual, "__address__", "testaddr")}})
 	testutil.Assert(t, ok)
 	testutil.Equals(t, "", reason)
-}
-
-// TestProxyStore_MatchingKey tests that a subkey matches the upper
-// key since it queries for a subset of the key.
-func TestProxyStore_MatchingKey(t *testing.T) {
-	listeners, err := lru.NewLRU(100, nil)
-	testutil.Ok(t, err)
-
-	testKey := findMostMatchingKey(nil, &storepb.SeriesRequest{
-		MinTime: 123,
-		MaxTime: 123,
-		Matchers: []storepb.LabelMatcher{
-			{
-				Type:  storepb.LabelMatcher_EQ,
-				Name:  "test",
-				Value: "test",
-			},
-		},
-	}, listeners)
-
-	listeners.Add(testKey, "test")
-	testSubkey := findMostMatchingKey(nil, &storepb.SeriesRequest{
-		MinTime: 123,
-		MaxTime: 123,
-		Matchers: []storepb.LabelMatcher{
-			{
-				Type:  storepb.LabelMatcher_EQ,
-				Name:  "test",
-				Value: "test",
-			},
-			{
-				Type:  storepb.LabelMatcher_EQ,
-				Name:  "test",
-				Value: "test123",
-			},
-		},
-	}, listeners)
-
-	testNotMatchingKey := findMostMatchingKey(nil, &storepb.SeriesRequest{
-		MinTime: 123,
-		MaxTime: 123,
-		Matchers: []storepb.LabelMatcher{
-			{
-				Type:  storepb.LabelMatcher_EQ,
-				Name:  "test",
-				Value: "test123",
-			},
-		},
-	}, listeners)
-
-	testutil.Assert(t, testKey == testSubkey)
-	testutil.Assert(t, testNotMatchingKey != testKey)
 }
