@@ -38,7 +38,7 @@ import (
 type ctxKey int
 
 // Seems good enough. In the worst case, there are going to be more allocations.
-const rlkLRUSize = 100
+const rlkLRUSize = 1_000_000
 
 // StoreMatcherKey is the context key for the store's allow list.
 const StoreMatcherKey = ctxKey(0)
