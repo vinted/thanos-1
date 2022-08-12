@@ -395,8 +395,6 @@ func findMostMatchingKey(stores []Client, r *storepb.SeriesRequest, listeners *l
 		fmt.Fprintf(&sb, "%s%c%s%c", m.Name, marker, m.Value, marker)
 	}
 
-	fmt.Fprintf(&sb, "%v", r.QueryHints)
-
 	_, ok := listeners.Get(sb.String())
 	// Easy path - direct match.
 	if ok {
