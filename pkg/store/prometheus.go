@@ -64,6 +64,32 @@ var baseVer, _ = semver.Make("2.24.0")
 
 const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size for sync pool size.
 
+type PrometheusStoreDRPC struct {
+	s *PrometheusStore
+}
+
+func NewPrometheusStoreDRPC(
+	s *PrometheusStore,
+) (*PrometheusStoreDRPC, error) {
+	return &PrometheusStoreDRPC{s: s}, nil
+}
+
+func (st *PrometheusStoreDRPC) Series(r *storepb.SeriesRequest, s storepb.DRPCStore_SeriesStream) error {
+	return st.s.genericSeries(r, s)
+}
+
+func (st *PrometheusStoreDRPC) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+	return nil, nil
+}
+
+func (st *PrometheusStoreDRPC) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	return nil, nil
+}
+
+func (st *PrometheusStoreDRPC) LabelValues(ctx context.Context, r *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	return nil, nil
+}
+
 // NewPrometheusStore returns a new PrometheusStore that uses the given HTTP client
 // to talk to Prometheus.
 // It attaches the provided external labels to all results. Provided external labels has to be sorted.
@@ -139,8 +165,12 @@ func (p *PrometheusStore) putBuffer(b *[]byte) {
 	p.buffers.Put(b)
 }
 
-// Series returns all series for a requested time range and label matcher.
-func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_SeriesServer) error {
+type seriesServer interface {
+	Send(*storepb.SeriesResponse) error
+	Context() context.Context
+}
+
+func (p *PrometheusStore) genericSeries(r *storepb.SeriesRequest, s seriesServer) error {
 	extLset := p.externalLabelsFn()
 
 	match, matchers, err := matchesExternalLabels(r.Matchers, extLset)
@@ -242,7 +272,12 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, extLset)
 }
 
-func (p *PrometheusStore) queryPrometheus(s storepb.Store_SeriesServer, r *storepb.SeriesRequest) error {
+// Series returns all series for a requested time range and label matcher.
+func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_SeriesServer) error {
+	return p.genericSeries(r, s)
+}
+
+func (p *PrometheusStore) queryPrometheus(s seriesServer, r *storepb.SeriesRequest) error {
 	var matrix model.Matrix
 
 	opts := promclient.QueryOptions{}
@@ -309,7 +344,7 @@ func (p *PrometheusStore) queryPrometheus(s storepb.Store_SeriesServer, r *store
 	return nil
 }
 
-func (p *PrometheusStore) handleSampledPrometheusResponse(s storepb.Store_SeriesServer, httpResp *http.Response, querySpan tracing.Span, extLset labels.Labels) error {
+func (p *PrometheusStore) handleSampledPrometheusResponse(s seriesServer, httpResp *http.Response, querySpan tracing.Span, extLset labels.Labels) error {
 	level.Debug(p.logger).Log("msg", "started handling ReadRequest_SAMPLED response type.")
 
 	resp, err := p.fetchSampledResponse(s.Context(), httpResp)
@@ -354,7 +389,7 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(s storepb.Store_Series
 }
 
 func (p *PrometheusStore) handleStreamedPrometheusResponse(
-	s storepb.Store_SeriesServer,
+	s seriesServer,
 	shardMatcher *storepb.ShardMatcher,
 	httpResp *http.Response,
 	querySpan tracing.Span,

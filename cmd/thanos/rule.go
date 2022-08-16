@@ -625,7 +625,7 @@ func runRule(
 
 	g.Add(func() error {
 		statusProber.Ready()
-		return s.ListenAndServe()
+		return s.ListenAndServe(nil)
 	}, func(err error) {
 		statusProber.NotReady(err)
 		s.Shutdown(err)

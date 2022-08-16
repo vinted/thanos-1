@@ -704,7 +704,7 @@ func runQuery(
 
 		g.Add(func() error {
 			statusProber.Ready()
-			return s.ListenAndServe()
+			return s.ListenAndServe(nil)
 		}, func(error) {
 			statusProber.NotReady(err)
 			s.Shutdown(err)

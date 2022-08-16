@@ -40,11 +40,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/reloader"
 	"github.com/thanos-io/thanos/pkg/rules"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	drpcserver "github.com/thanos-io/thanos/pkg/server/drpc"
 	grpcserver "github.com/thanos-io/thanos/pkg/server/grpc"
 	httpserver "github.com/thanos-io/thanos/pkg/server/http"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/targets"
 	"github.com/thanos-io/thanos/pkg/tls"
 )
@@ -292,9 +294,17 @@ func runSidecar(
 			grpcserver.WithGracePeriod(time.Duration(conf.grpc.gracePeriod)),
 			grpcserver.WithTLSConfig(tlsCfg),
 		)
+
+		d := drpcserver.NewServer(logger, reg)
+		promStoreDRPC, err := store.NewPrometheusStoreDRPC(promStore)
+		if err != nil {
+			return err
+		}
+		storepb.DRPCRegisterStore(d.GetMux(), promStoreDRPC)
+
 		g.Add(func() error {
 			statusProber.Ready()
-			return s.ListenAndServe()
+			return s.ListenAndServe(d)
 		}, func(err error) {
 			statusProber.NotReady(err)
 			s.Shutdown(err)

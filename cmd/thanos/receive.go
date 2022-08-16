@@ -435,7 +435,7 @@ func setupAndRunGRPCServer(g *run.Group,
 	g.Add(func() error {
 		for range startGRPCListening {
 			level.Info(logger).Log("msg", "listening for StoreAPI and WritableStoreAPI gRPC", "address", *conf.grpcBindAddr)
-			if err := s.ListenAndServe(); err != nil {
+			if err := s.ListenAndServe(nil); err != nil {
 				return errors.Wrap(err, "serve gRPC")
 			}
 		}

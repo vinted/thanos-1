@@ -420,7 +420,7 @@ func runStore(
 		g.Add(func() error {
 			<-bucketStoreReady
 			statusProber.Ready()
-			return s.ListenAndServe()
+			return s.ListenAndServe(nil)
 		}, func(err error) {
 			statusProber.NotReady(err)
 			s.Shutdown(err)
