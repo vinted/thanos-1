@@ -27,8 +27,11 @@ import (
 	"github.com/thanos-io/objstore/providers/s3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"storj.io/drpc/drpcconn"
+	"storj.io/drpc/drpcmigrate"
 
 	"github.com/thanos-io/thanos/pkg/api/query/querypb"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	prompb_copy "github.com/thanos-io/thanos/pkg/store/storepb/prompb"
 
 	"github.com/chromedp/cdproto/network"
@@ -1524,4 +1527,63 @@ func TestGrpcQueryRange(t *testing.T) {
 		return nil
 	})
 	testutil.Ok(t, err)
+}
+
+func TestDrpcSeriesSidecar(t *testing.T) {
+	t.Parallel()
+
+	e, err := e2e.NewDockerEnvironment("e2e_test_query_drpc_api_sidecar")
+	testutil.Ok(t, err)
+	t.Cleanup(e2ethanos.CleanScenario(t, e))
+
+	promConfig := e2ethanos.DefaultPromConfig("p1", 0, "", "")
+	prom, sidecar := e2ethanos.NewPrometheusWithSidecar(e, "p1", promConfig, "", e2ethanos.DefaultPrometheusImage(), "", "remote-write-receiver")
+	testutil.Ok(t, e2e.StartAndWaitReady(prom, sidecar))
+
+	now := time.Now()
+	samples := []fakeMetricSample{
+		{
+			label:             "test",
+			value:             1,
+			timestampUnixNano: now.UnixNano(),
+		},
+		{
+			label:             "test",
+			value:             2,
+			timestampUnixNano: now.Add(time.Hour).UnixNano(),
+		},
+	}
+	ctx := context.Background()
+	testutil.Ok(t, synthesizeFakeMetricSamples(ctx, prom, samples))
+
+	rawconn, err := drpcmigrate.DialWithHeader(ctx, "tcp", sidecar.Endpoint("grpc"), drpcmigrate.DRPCHeader)
+	testutil.Ok(t, err)
+
+	conn := drpcconn.New(rawconn)
+	t.Cleanup(func() {
+		testutil.Ok(t, conn.Close())
+	})
+
+	client := storepb.NewDRPCStoreClient(conn)
+
+	seriesStream, err := client.Series(context.Background(), &storepb.SeriesRequest{
+		Matchers: []storepb.LabelMatcher{
+			{
+				Type:  storepb.LabelMatcher_EQ,
+				Name:  "instance",
+				Value: "test",
+			},
+		},
+		MinTime:             now.UnixMilli(),
+		MaxTime:             now.UnixMilli(),
+		MaxResolutionWindow: 0,
+		Aggregates:          []storepb.Aggr{storepb.Aggr_COUNT, storepb.Aggr_SUM},
+	})
+	testutil.Ok(t, err)
+
+	resp, err := seriesStream.Recv()
+	//time.Sleep(88888 * time.Second)
+	testutil.Ok(t, err)
+
+	testutil.Assert(t, true, resp.GetSeries() != nil)
 }

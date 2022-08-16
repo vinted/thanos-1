@@ -5,11 +5,12 @@
 package infopb
 
 import (
+	bytes "bytes"
 	context "context"
 	errors "errors"
 
-	protojson "google.golang.org/protobuf/encoding/protojson"
-	proto "google.golang.org/protobuf/proto"
+	jsonpb "github.com/gogo/protobuf/jsonpb"
+	proto "github.com/gogo/protobuf/proto"
 	drpc "storj.io/drpc"
 	drpcerr "storj.io/drpc/drpcerr"
 )
@@ -20,20 +21,21 @@ func (drpcEncoding_File_info_infopb_rpc_proto) Marshal(msg drpc.Message) ([]byte
 	return proto.Marshal(msg.(proto.Message))
 }
 
-func (drpcEncoding_File_info_infopb_rpc_proto) MarshalAppend(buf []byte, msg drpc.Message) ([]byte, error) {
-	return proto.MarshalOptions{}.MarshalAppend(buf, msg.(proto.Message))
-}
-
 func (drpcEncoding_File_info_infopb_rpc_proto) Unmarshal(buf []byte, msg drpc.Message) error {
 	return proto.Unmarshal(buf, msg.(proto.Message))
 }
 
 func (drpcEncoding_File_info_infopb_rpc_proto) JSONMarshal(msg drpc.Message) ([]byte, error) {
-	return protojson.Marshal(msg.(proto.Message))
+	var buf bytes.Buffer
+	err := new(jsonpb.Marshaler).Marshal(&buf, msg.(proto.Message))
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func (drpcEncoding_File_info_infopb_rpc_proto) JSONUnmarshal(buf []byte, msg drpc.Message) error {
-	return protojson.Unmarshal(buf, msg.(proto.Message))
+	return jsonpb.Unmarshal(bytes.NewReader(buf), msg.(proto.Message))
 }
 
 type DRPCInfoClient interface {
