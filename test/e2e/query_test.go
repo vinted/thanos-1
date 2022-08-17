@@ -1564,9 +1564,13 @@ func TestDrpcSeriesSidecar(t *testing.T) {
 		testutil.Ok(t, conn.Close())
 	})
 
-	client := storepb.NewDRPCStoreClient(conn)
+	grpcConn, err := grpc.Dial(sidecar.Endpoint("grpc"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	testutil.Ok(t, err)
 
-	seriesStream, err := client.Series(context.Background(), &storepb.SeriesRequest{
+	grpcClient := storepb.NewStoreClient(grpcConn)
+	drpcClient := storepb.NewDRPCStoreClient(conn)
+
+	req := &storepb.SeriesRequest{
 		Matchers: []storepb.LabelMatcher{
 			{
 				Type:  storepb.LabelMatcher_EQ,
@@ -1575,15 +1579,26 @@ func TestDrpcSeriesSidecar(t *testing.T) {
 			},
 		},
 		MinTime:             now.UnixMilli(),
-		MaxTime:             now.UnixMilli(),
+		MaxTime:             now.Add(5 * time.Hour).UnixMilli(),
 		MaxResolutionWindow: 0,
 		Aggregates:          []storepb.Aggr{storepb.Aggr_COUNT, storepb.Aggr_SUM},
-	})
+	}
+
+	seriesDrpcStream, err := drpcClient.Series(context.Background(), req)
 	testutil.Ok(t, err)
 
-	resp, err := seriesStream.Recv()
-	//time.Sleep(88888 * time.Second)
+	seriesGrpcStream, err := grpcClient.Series(context.Background(), req)
 	testutil.Ok(t, err)
 
-	testutil.Assert(t, true, resp.GetSeries() != nil)
+	{
+		resp, err := seriesGrpcStream.Recv()
+		testutil.Ok(t, err)
+		testutil.Assert(t, true, resp.GetSeries() != nil)
+	}
+
+	{
+		resp, err := seriesDrpcStream.Recv()
+		testutil.Ok(t, err)
+		testutil.Assert(t, true, resp.GetSeries() != nil)
+	}
 }
