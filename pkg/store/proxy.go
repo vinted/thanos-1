@@ -42,6 +42,8 @@ type Client interface {
 	// StoreClient to access the store.
 	storepb.StoreClient
 
+	SeriesDRPC(ctx context.Context, in *storepb.SeriesRequest) (storepb.DRPCStore_SeriesClient, error)
+
 	// LabelSets that each apply to some data exposed by the backing store.
 	LabelSets() []labels.Labels
 
@@ -320,7 +322,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 				"store.addr": st.Addr(),
 			})
 
-			sc, err := st.Series(seriesCtx, r)
+			sc, err := st.SeriesDRPC(seriesCtx, r)
 			if err != nil {
 				err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
 				span.SetTag("err", err.Error())
@@ -403,7 +405,7 @@ type streamSeriesSet struct {
 	ctx    context.Context
 	logger log.Logger
 
-	stream storepb.Store_SeriesClient
+	stream storepb.DRPCStore_SeriesClient
 	warnCh directSender
 
 	currSeries *storepb.Series
@@ -440,7 +442,7 @@ func startStreamSeriesSet(
 	span tracing.Span,
 	closeSeries context.CancelFunc,
 	wg *sync.WaitGroup,
-	stream storepb.Store_SeriesClient,
+	stream storepb.DRPCStore_SeriesClient,
 	warnCh directSender,
 	name string,
 	partialResponse bool,
@@ -493,20 +495,6 @@ func startStreamSeriesSet(
 			}
 		}()
 
-		rCh := make(chan *recvResponse)
-		done := make(chan struct{})
-		go func() {
-			for {
-				r, err := s.stream.Recv()
-				select {
-				case <-done:
-					close(rCh)
-					return
-				case rCh <- &recvResponse{r: r, err: err}:
-				}
-			}
-		}()
-
 		shardMatcher := shardInfo.Matcher(buffers)
 		defer shardMatcher.Close()
 		applySharding := shardInfo != nil && !storeSupportsSharding
@@ -520,34 +508,34 @@ func startStreamSeriesSet(
 		handleRecvResponse := func() (next bool) {
 			frameTimeoutCtx, cancel := frameCtx(s.responseTimeout)
 			defer cancel()
-			var rr *recvResponse
+
+			resp, err := stream.Recv()
 			select {
 			case <-ctx.Done():
-				s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
+				s.err = ctx.Err()
 				return false
 			case <-frameTimeoutCtx.Done():
-				s.handleErr(errors.Wrapf(frameTimeoutCtx.Err(), "failed to receive any data in %s from %s", s.responseTimeout.String(), s.name), done)
+				s.err = frameTimeoutCtx.Err()
 				return false
-			case rr = <-rCh:
+			default:
 			}
 
-			if rr.err == io.EOF {
-				close(done)
+			if err == io.EOF {
 				return false
 			}
 
-			if rr.err != nil {
-				s.handleErr(errors.Wrapf(rr.err, "receive series from %s", s.name), done)
+			if err != nil {
+				s.err = err
 				return false
 			}
 			numResponses++
-			bytesProcessed += rr.r.Size()
+			bytesProcessed += resp.Size()
 
-			if w := rr.r.GetWarning(); w != "" {
+			if w := resp.GetWarning(); w != "" {
 				s.warnCh.send(storepb.NewWarnSeriesResponse(errors.New(w)))
 			}
 
-			if series := rr.r.GetSeries(); series != nil {
+			if series := resp.GetSeries(); series != nil {
 				if applySharding && !shardMatcher.MatchesZLabels(series.Labels) {
 					return true
 				}
@@ -557,7 +545,7 @@ func startStreamSeriesSet(
 				select {
 				case s.recvCh <- series:
 				case <-ctx.Done():
-					s.handleErr(errors.Wrapf(ctx.Err(), "failed to receive any data from %s", s.name), done)
+					s.err = ctx.Err()
 					return false
 				}
 			}

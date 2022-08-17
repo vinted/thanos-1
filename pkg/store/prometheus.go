@@ -79,15 +79,15 @@ func (st *PrometheusStoreDRPC) Series(r *storepb.SeriesRequest, s storepb.DRPCSt
 }
 
 func (st *PrometheusStoreDRPC) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb.InfoResponse, error) {
-	return nil, nil
+	return st.s.Info(ctx, r)
 }
 
 func (st *PrometheusStoreDRPC) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
-	return nil, nil
+	return st.s.LabelNames(ctx, r)
 }
 
 func (st *PrometheusStoreDRPC) LabelValues(ctx context.Context, r *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-	return nil, nil
+	return st.s.LabelValues(ctx, r)
 }
 
 // NewPrometheusStore returns a new PrometheusStore that uses the given HTTP client

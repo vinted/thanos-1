@@ -28,11 +28,11 @@ var (
 )
 
 func noAllocString(buf []byte) string {
-	return *(*string)(unsafe.Pointer(&buf))
+	return string(buf)
 }
 
 func noAllocBytes(buf string) []byte {
-	return *(*[]byte)(unsafe.Pointer(&buf))
+	return []byte(buf)
 }
 
 // ZLabelsFromPromLabels converts Prometheus labels to slice of labelpb.ZLabel in type unsafe manner.

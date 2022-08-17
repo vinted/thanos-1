@@ -643,6 +643,10 @@ func NewInProcessClient(t testing.TB, name string, client storepb.StoreClient, e
 	}
 }
 
+func (i inProcessClient) SeriesDRPC(ctx context.Context, in *storepb.SeriesRequest) (storepb.DRPCStore_SeriesClient, error) {
+	return nil, nil
+}
+
 func (i inProcessClient) LabelSets() []labels.Labels {
 	return []labels.Labels{i.extLset}
 }

@@ -22,6 +22,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc"
+	"storj.io/drpc/drpcconn"
+	"storj.io/drpc/drpcmigrate"
 
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -105,6 +107,10 @@ type StoreSet struct {
 	unhealthyStoreTimeout            time.Duration
 }
 
+func (s *storeRef) SeriesDRPC(ctx context.Context, in *storepb.SeriesRequest) (storepb.DRPCStore_SeriesClient, error) {
+	return s.drpcClient.Series(ctx, in)
+}
+
 type storeSetNodeCollector struct {
 	externalLabelOccurrences func() map[string]int
 }
@@ -169,6 +175,9 @@ func NewStoreSet(
 type storeRef struct {
 	storepb.StoreClient
 
+	drpcClient storepb.DRPCStoreClient
+	drpcConn   *drpcconn.Conn
+
 	mtx  sync.RWMutex
 	cc   *grpc.ClientConn
 	addr string
@@ -219,6 +228,9 @@ func (s *storeRef) Addr() string {
 
 func (s *storeRef) close() {
 	runutil.CloseWithLogOnErr(s.logger, s.cc, fmt.Sprintf("store %v connection close", s.addr))
+	if s.drpcConn != nil {
+		runutil.CloseWithLogOnErr(s.logger, s.drpcConn, fmt.Sprintf("store %v connection close", s.addr))
+	}
 }
 
 // Update updates the store set. It fetches current list of store specs from function and updates the fresh metadata
@@ -337,6 +349,20 @@ func (s *StoreSet) getHealthyStores(ctx context.Context) map[string]*storeRef {
 				}
 				store.storeType = component.FromProto(resp.StoreType)
 				store.Update(labelpb.ZLabelSetsToPromLabelSets(resp.LabelSets...), resp.MinTime, resp.MaxTime)
+				if store.drpcConn == nil {
+					rawconn, err := drpcmigrate.DialWithHeader(ctx, "tcp", addr, drpcmigrate.DRPCHeader)
+					if err != nil {
+						store.close()
+						level.Warn(s.logger).Log("msg", "update of store node failed", "err", err, "address", spec.Addr())
+						return
+					}
+
+					conn := drpcconn.New(rawconn)
+
+					store.drpcClient = storepb.NewDRPCStoreClient(conn)
+					store.drpcConn = conn
+				}
+
 			}
 
 			mtx.Lock()

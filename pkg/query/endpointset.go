@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/thanos-io/thanos/pkg/api/query/querypb"
+	"storj.io/drpc/drpcconn"
+	"storj.io/drpc/drpcmigrate"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -357,6 +359,19 @@ func (e *EndpointSet) Update(ctx context.Context) {
 				return
 			}
 
+			if newRef.HasStoreAPI() && newRef.drpcClient == nil {
+				rawconn, err := drpcmigrate.DialWithHeader(ctx, "tcp", newRef.Addr(), drpcmigrate.DRPCHeader)
+				if err != nil {
+					level.Warn(e.logger).Log("msg", "new endpoint creation failed", "err", err, "address", spec.Addr())
+					return
+				}
+
+				conn := drpcconn.New(rawconn)
+
+				newRef.drpcClient = storepb.NewDRPCStoreClient(conn)
+				newRef.drpcConn = conn
+			}
+
 			mu.Lock()
 			defer mu.Unlock()
 			newRefs[spec.Addr()] = newRef
@@ -470,10 +485,15 @@ func (e *EndpointSet) GetStoreClients() []store.Client {
 				StoreClient: storepb.NewStoreClient(er.cc),
 				addr:        er.addr,
 				metadata:    er.metadata,
+				drpcClient:  storepb.NewDRPCStoreClient(er.drpcConn),
 			})
 		}
 	}
 	return stores
+}
+
+func (e *endpointRef) SeriesDRPC(ctx context.Context, in *storepb.SeriesRequest) (storepb.DRPCStore_SeriesClient, error) {
+	return e.drpcClient.Series(ctx, in)
 }
 
 // GetQueryAPIClients returns a list of all active query API clients.
@@ -575,6 +595,9 @@ func (e *EndpointSet) GetEndpointStatus() []EndpointStatus {
 type endpointRef struct {
 	storepb.StoreClient
 
+	drpcConn   *drpcconn.Conn
+	drpcClient storepb.DRPCStoreClient
+
 	mtx      sync.RWMutex
 	cc       *grpc.ClientConn
 	addr     string
@@ -590,9 +613,9 @@ type endpointRef struct {
 // newEndpointRef creates a new endpointRef with a gRPC channel to the given the IP address.
 // The call to newEndpointRef will return an error if establishing the channel fails.
 func (e *EndpointSet) newEndpointRef(ctx context.Context, spec *GRPCEndpointSpec) (*endpointRef, error) {
-	conn, err := grpc.DialContext(ctx, spec.Addr(), e.dialOpts...)
+	grpcConn, err := grpc.DialContext(ctx, spec.Addr(), e.dialOpts...)
 	if err != nil {
-		return nil, errors.Wrap(err, "dialing connection")
+		return nil, errors.Wrap(err, "dialing gRPC connection")
 	}
 
 	return &endpointRef{
@@ -600,7 +623,7 @@ func (e *EndpointSet) newEndpointRef(ctx context.Context, spec *GRPCEndpointSpec
 		created:  e.now(),
 		addr:     spec.Addr(),
 		isStrict: spec.IsStrictStatic(),
-		cc:       conn,
+		cc:       grpcConn,
 	}, nil
 }
 
@@ -779,7 +802,10 @@ func (er *endpointRef) Addr() string {
 }
 
 func (er *endpointRef) Close() {
-	runutil.CloseWithLogOnErr(er.logger, er.cc, fmt.Sprintf("endpoint %v connection closed", er.addr))
+	runutil.CloseWithLogOnErr(er.logger, er.cc, fmt.Sprintf("endpoint %v gRPC connection closed", er.addr))
+	if er.drpcConn != nil {
+		runutil.CloseWithLogOnErr(er.logger, er.drpcConn, fmt.Sprintf("endpoint %v dRPC connection closed", er.addr))
+	}
 }
 
 func (er *endpointRef) apisPresent() []string {
