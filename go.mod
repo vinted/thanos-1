@@ -99,10 +99,7 @@ require (
 
 require github.com/viney-shih/go-cache v1.1.4
 
-require (
-	github.com/rueian/rueidis v0.0.65
-	google.golang.org/protobuf v1.27.1
-)
+require github.com/rueian/rueidis v0.0.65
 
 require (
 	cloud.google.com/go v0.99.0 // indirect
@@ -208,6 +205,7 @@ require (
 	golang.org/x/tools v0.1.10 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
+	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
 )
@@ -239,4 +237,4 @@ replace (
 
 go 1.17
 
-replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20220616125815-f25d20ca6c1b
+replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20220818063421-95da151113e3
