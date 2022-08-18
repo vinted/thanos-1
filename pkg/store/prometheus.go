@@ -65,17 +65,18 @@ var baseVer, _ = semver.Make("2.24.0")
 const initialBufSize = 32 * 1024 // 32KB seems like a good minimum starting size for sync pool size.
 
 type PrometheusStoreDRPC struct {
-	s *PrometheusStore
+	s        *PrometheusStore
+	respPool sync.Pool
 }
 
 func NewPrometheusStoreDRPC(
 	s *PrometheusStore,
 ) (*PrometheusStoreDRPC, error) {
-	return &PrometheusStoreDRPC{s: s}, nil
+	return &PrometheusStoreDRPC{s: s, respPool: sync.Pool{}}, nil
 }
 
 func (st *PrometheusStoreDRPC) Series(r *storepb.SeriesRequest, s storepb.DRPCStore_SeriesStream) error {
-	return st.s.genericSeries(r, s)
+	return st.s.genericSeries(r, s, &st.respPool)
 }
 
 func (st *PrometheusStoreDRPC) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb.InfoResponse, error) {
@@ -170,7 +171,7 @@ type seriesServer interface {
 	Context() context.Context
 }
 
-func (p *PrometheusStore) genericSeries(r *storepb.SeriesRequest, s seriesServer) error {
+func (p *PrometheusStore) genericSeries(r *storepb.SeriesRequest, s seriesServer, pool *sync.Pool) error {
 	extLset := p.externalLabelsFn()
 
 	match, matchers, err := matchesExternalLabels(r.Matchers, extLset)
@@ -269,12 +270,12 @@ func (p *PrometheusStore) genericSeries(r *storepb.SeriesRequest, s seriesServer
 	if !strings.HasPrefix(contentType, "application/x-streamed-protobuf; proto=prometheus.ChunkedReadResponse") {
 		return errors.Errorf("not supported remote read content type: %s", contentType)
 	}
-	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, extLset)
+	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, extLset, pool)
 }
 
 // Series returns all series for a requested time range and label matcher.
 func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_SeriesServer) error {
-	return p.genericSeries(r, s)
+	return p.genericSeries(r, s, nil)
 }
 
 func (p *PrometheusStore) queryPrometheus(s seriesServer, r *storepb.SeriesRequest) error {
@@ -394,7 +395,15 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 	httpResp *http.Response,
 	querySpan tracing.Span,
 	extLset labels.Labels,
+	pool *sync.Pool,
 ) error {
+	var resp *storepb.SeriesResponse
+	defer func(r **storepb.SeriesResponse) {
+		if *r != nil {
+			(*r).Close()
+		}
+	}(&resp)
+
 	level.Debug(p.logger).Log("msg", "started handling ReadRequest_STREAMED_XOR_CHUNKS streamed read response.")
 
 	framesNum := 0
@@ -456,13 +465,22 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 				series.Chunks[i].Data = nil
 			}
 
-			r := storepb.NewSeriesResponse(&storepb.Series{
+			series := storepb.Series{
 				Labels: labelpb.ZLabelsFromPromLabels(
 					completeLabelset,
 				),
 				Chunks: thanosChks,
-			})
-			if err := s.Send(r); err != nil {
+			}
+
+			if resp == nil {
+				resp = storepb.NewSeriesResponseWithPool(&series, pool)
+			} else {
+				resp.Result = &storepb.SeriesResponse_Series{
+					Series: &series,
+				}
+			}
+
+			if err := s.Send(resp); err != nil {
 				return err
 			}
 		}

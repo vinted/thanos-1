@@ -353,6 +353,7 @@ func (s *ProxyStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 					st.SupportsSharding(),
 					&s.buffers,
 					r.ShardInfo,
+					nil,
 				))
 		}
 
@@ -451,6 +452,7 @@ func startStreamSeriesSet(
 	storeSupportsSharding bool,
 	buffers *sync.Pool,
 	shardInfo *storepb.ShardInfo,
+	pool *sync.Pool,
 ) *streamSeriesSet {
 	s := &streamSeriesSet{
 		ctx:             ctx,
