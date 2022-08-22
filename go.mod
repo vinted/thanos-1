@@ -46,7 +46,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/jpillora/backoff v1.0.0
-	github.com/klauspost/compress v1.13.6
+	github.com/klauspost/compress v1.15.9
 	github.com/leanovate/gopter v0.2.4
 	github.com/lightstep/lightstep-tracer-go v0.18.1
 	github.com/lovoo/gcloud-opentracing v0.3.0
@@ -99,7 +99,10 @@ require (
 
 require github.com/viney-shih/go-cache v1.1.4
 
-require github.com/rueian/rueidis v0.0.65
+require (
+	github.com/mostynb/go-grpc-compression v1.1.17
+	github.com/rueian/rueidis v0.0.65
+)
 
 require (
 	cloud.google.com/go v0.99.0 // indirect
