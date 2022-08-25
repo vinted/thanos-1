@@ -1148,8 +1148,8 @@ github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijb
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/viney-shih/go-cache v1.1.4 h1:7eFpdhndN1p7clLBI7qXv08wGw8oZVJJRDxj1WpnOh0=
 github.com/viney-shih/go-cache v1.1.4/go.mod h1:IDDn1xdmwa6cSx6WbN2c4ehqybQ3JPooYTe66+MSYMQ=
-github.com/vinted/prometheus v1.8.2-0.20220808145920-5c879a061105 h1:qajrwhjz84exzjeDTqdOjKC53635YA+Z+w3TP2GX80o=
-github.com/vinted/prometheus v1.8.2-0.20220808145920-5c879a061105/go.mod h1:egARUgz+K93zwqsVIAneFlLZefyGOON44WyAp4Xqbbk=
+github.com/vinted/prometheus v1.8.2-0.20220825124731-e67125113f00 h1:vhjCZJHIaihRUt9xAgcUl8P1auqxHTxSNSI1Rf/AuAQ=
+github.com/vinted/prometheus v1.8.2-0.20220825124731-e67125113f00/go.mod h1:egARUgz+K93zwqsVIAneFlLZefyGOON44WyAp4Xqbbk=
 github.com/vmihailenco/go-tinylfu v0.2.2 h1:H1eiG6HM36iniK6+21n9LLpzx1G9R3DJa2UjUjbynsI=
 github.com/vmihailenco/go-tinylfu v0.2.2/go.mod h1:CutYi2Q9puTxfcolkliPq4npPuofg9N9t8JVrjzwa3Q=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
