@@ -45,7 +45,6 @@ require (
 	github.com/hashicorp/memberlist v0.3.1
 	github.com/jpillora/backoff v1.0.0
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.15.8
 	github.com/leanovate/gopter v0.2.9
 	github.com/lightstep/lightstep-tracer-go v0.25.0
 	github.com/lovoo/gcloud-opentracing v0.3.0
@@ -105,6 +104,11 @@ require (
 require github.com/viney-shih/go-cache v1.1.4
 
 require github.com/rueian/rueidis v0.0.69
+
+require (
+	github.com/klauspost/compress v1.15.9
+	github.com/mostynb/go-grpc-compression v1.1.17
+)
 
 require (
 	cloud.google.com/go v0.102.0 // indirect
@@ -194,7 +198,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.14 // indirect
-	github.com/kr/pretty v0.3.0 // indirect
 	github.com/lightstep/lightstep-tracer-common/golang/gogo v0.0.0-20210210170715-a8dfcb80d3a7 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect

@@ -25,10 +25,14 @@ import (
 	"go.uber.org/automaxprocs/maxprocs"
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	"github.com/mostynb/go-grpc-compression/zstd"
 	"github.com/thanos-io/thanos/pkg/extkingpin"
 	"github.com/thanos-io/thanos/pkg/logging"
 	"github.com/thanos-io/thanos/pkg/tracing/client"
 )
+
+// To register the encoder.
+var _ = zstd.Name
 
 func main() {
 	// We use mmaped resources in most of the components so hardcode PanicOnFault to true. This allows us to recover (if we can e.g if queries
