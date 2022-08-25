@@ -63,7 +63,6 @@ const (
 	promqlNegativeOffset = "promql-negative-offset"
 	promqlAtModifier     = "promql-at-modifier"
 	queryPushdown        = "query-pushdown"
-	compressionNone      = "none"
 )
 
 // registerQuery registers a query command.
