@@ -103,7 +103,7 @@ require (
 
 require github.com/viney-shih/go-cache v1.1.4
 
-require github.com/rueian/rueidis v0.0.69
+require github.com/rueian/rueidis v0.0.75
 
 require (
 	github.com/klauspost/compress v1.15.9
