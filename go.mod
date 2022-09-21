@@ -106,6 +106,7 @@ require github.com/viney-shih/go-cache v1.1.4
 require github.com/rueian/rueidis v0.0.75
 
 require (
+	github.com/dgraph-io/badger/v3 v3.2103.2
 	github.com/klauspost/compress v1.15.9
 	github.com/mostynb/go-grpc-compression v1.1.17
 )
@@ -153,6 +154,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
+	github.com/dgraph-io/ristretto v0.1.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
@@ -178,7 +180,9 @@ require (
 	github.com/gobwas/ws v1.1.0 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.4.1 // indirect
+	github.com/golang/glog v1.0.0 // indirect
 	github.com/google/btree v1.0.1 // indirect
+	github.com/google/flatbuffers v1.12.1 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20220608213341-c488b8fa1db3 // indirect
@@ -222,7 +226,6 @@ require (
 	github.com/sercand/kuberesolver v2.4.0+incompatible // indirect
 	github.com/shirou/gopsutil/v3 v3.21.2 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
-	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.34 // indirect
 	github.com/tklauser/go-sysconf v0.3.4 // indirect

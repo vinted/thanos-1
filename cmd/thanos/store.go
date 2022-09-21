@@ -50,6 +50,7 @@ import (
 
 type storeConfig struct {
 	indexCacheConfigs           extflag.PathOrContent
+	prefetchPostingsConfigs     extflag.PathOrContent
 	objStoreConfig              extflag.PathOrContent
 	dataDir                     string
 	grpcConfig                  grpcConfig
@@ -94,6 +95,11 @@ func (sc *storeConfig) registerFlag(cmd extkingpin.FlagClause) {
 
 	sc.cachingBucketConfig = *extflag.RegisterPathOrContent(hidden.HiddenCmdClause(cmd), "store.caching-bucket.config",
 		"YAML that contains configuration for caching bucket. Experimental feature, with high risk of changes. See format details: https://thanos.io/tip/components/store.md/#caching-bucket",
+		extflag.WithEnvSubstitution(),
+	)
+
+	sc.prefetchPostingsConfigs = *extflag.RegisterPathOrContent(cmd, "prefetch-postings.config",
+		"Experimental feature to pre-fetch postings for given matchers",
 		extflag.WithEnvSubstitution(),
 	)
 
@@ -322,6 +328,16 @@ func runStore(
 		return errors.Wrap(err, "create chunk pool")
 	}
 
+	go func() {
+		srv.ListenAndServe()
+	}()
+
+	indexCache, err = storecache.NewBadgerIndexCache(logger, indexCache)
+	if err != nil {
+		return errors.Wrap(err, "create badger IC")
+	}
+	defer indexCache.(*storecache.BadgerIndexCache).Close()
+
 	options := []store.BucketStoreOption{
 		store.WithLogger(logger),
 		store.WithRegistry(reg),
@@ -353,6 +369,20 @@ func runStore(
 	if err != nil {
 		return errors.Wrap(err, "create object storage store")
 	}
+
+	err = bs.SyncBlocks(context.Background())
+	if err != nil {
+		return errors.Wrap(err, "syncing blocks")
+	}
+
+	pf, err := store.NewPostingsPrefetcher(bs)
+	if err != nil {
+		return errors.Wrap(err, "create postings prefetcher")
+	}
+	if err := pf.DoFetch(); err != nil {
+		return errors.Wrapf(err, "doing postings prefetch")
+	}
+	return fmt.Errorf("bye!")
 
 	// bucketStoreReady signals when bucket store is ready.
 	bucketStoreReady := make(chan struct{})

@@ -2132,10 +2132,13 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 		g.Go(func() error {
 			begin := time.Now()
 
+			fmt.Println("reading", start, length)
 			b, err := r.block.readIndexRange(ctx, start, length)
 			if err != nil {
 				return errors.Wrap(err, "read postings range")
 			}
+			fmt.Println("finished", start, length)
+
 			fetchTime := time.Since(begin)
 
 			r.mtx.Lock()
