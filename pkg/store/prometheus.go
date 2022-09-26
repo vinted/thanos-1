@@ -64,7 +64,7 @@ type PrometheusStore struct {
 	limitMaxMatchedSeries int
 }
 
-// ErrSeriesMatchLimitReached is an error returned by PrometheusStore when matched series limit is enabled and matched series count exceeds the limit
+// ErrSeriesMatchLimitReached is an error returned by PrometheusStore when matched series limit is enabled and matched series count exceeds the limit.
 var ErrSeriesMatchLimitReached = errors.New("series match limit reached")
 
 // Label{Values,Names} call with matchers is supported for Prometheus versions >= 2.24.0.
