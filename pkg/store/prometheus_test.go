@@ -458,11 +458,6 @@ func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
 	u, err := url.Parse(fmt.Sprintf("http://%s", p.Addr()))
 	testutil.Ok(t, err)
 
-	promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
-		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil, 0)
-	testutil.Ok(t, err)
-
 	req := &storepb.SeriesRequest{
 		SkipChunks: true,
 		Matchers: []storepb.LabelMatcher{
@@ -487,17 +482,20 @@ func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
 		expectedErr           error
 		limitMaxMatchedSeries int
 	}{
+		// limit is not active
 		{
 			limitMaxMatchedSeries: 0,
 			req:                   req,
 			expected:              expected2Series,
 		},
+		// should return limit error as 'limit < matched series'
 		{
 			limitMaxMatchedSeries: 1,
 			req:                   req,
 			expected:              expected2Series,
 			expectedErr:           ErrSeriesMatchLimitReached,
 		},
+		// should succeed as limit is not reached
 		{
 			limitMaxMatchedSeries: 2,
 			req:                   req,
@@ -505,6 +503,12 @@ func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
 		},
 	} {
 		t.Run("", func(t *testing.T) {
+			promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
+				func() labels.Labels { return labels.FromStrings("region", "eu-west") },
+				func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil,
+				tcase.limitMaxMatchedSeries)
+			testutil.Ok(t, err)
+
 			srv := newStoreSeriesServer(ctx)
 			err = promStore.Series(tcase.req, srv)
 			if tcase.expectedErr != nil {
