@@ -14,8 +14,10 @@ import (
 	"net/url"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -61,6 +63,9 @@ type PrometheusStore struct {
 
 	limitMaxMatchedSeries int
 }
+
+// ErrSeriesMatchLimitReached is an error returned by PrometheusStore when matched series limit is enabled and matched series count exceeds the limit
+var ErrSeriesMatchLimitReached = errors.New("series match limit reached")
 
 // Label{Values,Names} call with matchers is supported for Prometheus versions >= 2.24.0.
 // https://github.com/prometheus/prometheus/commit/caa173d2aac4c390546b1f78302104b1ccae0878.
@@ -167,7 +172,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 		}
 
 		if matchedSeriesCount > p.limitMaxMatchedSeries {
-			return errors.New("matched series limit reached")
+			return ErrSeriesMatchLimitReached
 		}
 	}
 
@@ -717,15 +722,17 @@ func (p *PrometheusStore) Timestamps() (mint int64, maxt int64) {
 }
 
 func (p *PrometheusStore) getMatchedSeriesCount(matchers []*labels.Matcher, start, end int64) (int, error) {
-	params := url.Values{}
-	params.Set("start", fmt.Sprintf("%v", start))
-	params.Set("end", fmt.Sprintf("%v", end))
-	params.Set("only_count", "1")
-	for _, m := range matchers {
-		params.Add("match[]", m.String())
-	}
+	u := *p.base
+	u.Path = path.Join(u.Path, "/api/v1/series")
+	q := u.Query()
 
-	req, err := http.NewRequest(http.MethodGet, p.base.String()+"/api/v1/series?"+params.Encode(), nil)
+	q.Add("match[]", storepb.PromMatchersToString(matchers...))
+	q.Add("start", timeToPromTimestamp(timestamp.Time(start)))
+	q.Add("end", timeToPromTimestamp(timestamp.Time(end)))
+	q.Add("only_count", "1")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
 		return -1, errors.Wrap(err, "new series count request")
 	}
@@ -744,13 +751,24 @@ func (p *PrometheusStore) getMatchedSeriesCount(matchers []*labels.Matcher, star
 
 	type respModel struct {
 		Status string `json:"status"`
-		Data   int    `json:"data"`
+		Data   struct {
+			MetricsCount int `json:"metrics_count"`
+		} `json:"data"`
+	}
+
+	bodyData, err := io.ReadAll(res.Body)
+	if err != nil {
+		return -1, fmt.Errorf("read resp body: %w", err)
 	}
 
 	var resp respModel
-	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+	if err := json.Unmarshal(bodyData, &resp); err != nil {
 		return -1, errors.Wrap(err, "decode resp body")
 	}
 
-	return resp.Data, nil
+	return resp.Data.MetricsCount, nil
+}
+
+func timeToPromTimestamp(t time.Time) string {
+	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }
