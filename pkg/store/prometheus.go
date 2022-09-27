@@ -6,7 +6,6 @@ package store
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,10 +13,8 @@ import (
 	"net/url"
 	"path"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -166,9 +163,9 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	}
 
 	if p.limitMaxMatchedSeries > 0 {
-		matchedSeriesCount, err := p.getMatchedSeriesCount(matchers, r.MinTime, r.MaxTime)
+		matchedSeriesCount, err := p.client.SeriesMatchCount(s.Context(), p.base, matchers, r.MinTime, r.MaxTime)
 		if err != nil {
-			return errors.Wrap(err, "get matched series count")
+			return errors.Wrap(err, "get series match count")
 		}
 
 		if matchedSeriesCount > p.limitMaxMatchedSeries {
@@ -719,56 +716,4 @@ func (p *PrometheusStore) LabelSet() []labelpb.ZLabelSet {
 
 func (p *PrometheusStore) Timestamps() (mint int64, maxt int64) {
 	return p.timestamps()
-}
-
-func (p *PrometheusStore) getMatchedSeriesCount(matchers []*labels.Matcher, start, end int64) (int, error) {
-	u := *p.base
-	u.Path = path.Join(u.Path, "/api/v1/series")
-	q := u.Query()
-
-	q.Add("match[]", storepb.PromMatchersToString(matchers...))
-	q.Add("start", timeToPromTimestamp(timestamp.Time(start)))
-	q.Add("end", timeToPromTimestamp(timestamp.Time(end)))
-	q.Add("only_count", "1")
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return -1, errors.Wrap(err, "new series count request")
-	}
-
-	c := http.Client{}
-	res, err := c.Do(req)
-	if err != nil {
-		return -1, errors.Wrap(err, "execute series count request")
-	}
-
-	if res.StatusCode != 200 {
-		return -1, fmt.Errorf("returned status code: %v", res.StatusCode)
-	}
-
-	defer res.Body.Close()
-
-	type respModel struct {
-		Status string `json:"status"`
-		Data   struct {
-			MetricsCount int `json:"metrics_count"`
-		} `json:"data"`
-	}
-
-	bodyData, err := io.ReadAll(res.Body)
-	if err != nil {
-		return -1, fmt.Errorf("read resp body: %w", err)
-	}
-
-	var resp respModel
-	if err := json.Unmarshal(bodyData, &resp); err != nil {
-		return -1, errors.Wrap(err, "decode resp body")
-	}
-
-	return resp.Data.MetricsCount, nil
-}
-
-func timeToPromTimestamp(t time.Time) string {
-	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }
