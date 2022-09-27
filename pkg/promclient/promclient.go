@@ -838,3 +838,33 @@ func (c *Client) TargetsInGRPC(ctx context.Context, base *url.URL, stateTargets 
 	}
 	return v.Data, c.get2xxResultWithGRPCErrors(ctx, "/prom_targets HTTP[client]", &u, &v)
 }
+
+func (c *Client) SeriesMatchCount(ctx context.Context, base *url.URL, matchers []*labels.Matcher, start, end int64) (int, error) {
+	u := *base
+	u.Path = path.Join(u.Path, "/api/v1/series")
+	q := u.Query()
+
+	q.Add("match[]", storepb.PromMatchersToString(matchers...))
+	q.Add("start", formatTime(timestamp.Time(start)))
+	q.Add("end", formatTime(timestamp.Time(end)))
+	q.Add("only_count", "1")
+	u.RawQuery = q.Encode()
+
+	body, _, err := c.req2xx(ctx, &u, http.MethodGet)
+	if err != nil {
+		return -1, errors.Wrap(err, "read query instant response")
+	}
+
+	var m struct {
+		Status string `json:"status"`
+		Data   struct {
+			MetricsCount int `json:"metrics_count"`
+		} `json:"data"`
+	}
+
+	if err = json.Unmarshal(body, &m); err != nil {
+		return -1, errors.Wrap(err, "unmarshal query instant response")
+	}
+
+	return m.Data.MetricsCount, nil
+}
