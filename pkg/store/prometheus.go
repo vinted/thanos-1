@@ -56,7 +56,12 @@ type PrometheusStore struct {
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 
 	framesRead prometheus.Histogram
+
+	limitMaxMatchedSeries int
 }
+
+// ErrSeriesMatchLimitReached is an error returned by PrometheusStore when matched series limit is enabled and matched series count exceeds the limit.
+var ErrSeriesMatchLimitReached = errors.New("series match limit reached")
 
 // Label{Values,Names} call with matchers is supported for Prometheus versions >= 2.24.0.
 // https://github.com/prometheus/prometheus/commit/caa173d2aac4c390546b1f78302104b1ccae0878.
@@ -76,6 +81,7 @@ func NewPrometheusStore(
 	externalLabelsFn func() labels.Labels,
 	timestamps func() (mint int64, maxt int64),
 	promVersion func() string,
+	limitMaxMatchedSeries int,
 ) (*PrometheusStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -100,6 +106,7 @@ func NewPrometheusStore(
 				Buckets: prometheus.ExponentialBuckets(10, 10, 5),
 			},
 		),
+		limitMaxMatchedSeries: limitMaxMatchedSeries,
 	}
 	return p, nil
 }
@@ -156,6 +163,17 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	}
 	if len(matchers) == 0 {
 		return status.Error(codes.InvalidArgument, "no matchers specified (excluding external labels)")
+	}
+
+	if p.limitMaxMatchedSeries > 0 {
+		matchedSeriesCount, err := p.client.SeriesMatchCount(s.Context(), p.base, matchers, r.MinTime, r.MaxTime)
+		if err != nil {
+			return errors.Wrap(err, "get series match count")
+		}
+
+		if matchedSeriesCount > p.limitMaxMatchedSeries {
+			return ErrSeriesMatchLimitReached
+		}
 	}
 
 	// Don't ask for more than available time. This includes potential `minTime` flag limit.
