@@ -67,7 +67,7 @@ func testPrometheusStoreSeriesE2e(t *testing.T, prefix string) {
 	limitMinT := int64(0)
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return limitMinT, -1 }, nil) // MaxTime does not matter.
+		func() (int64, int64) { return limitMinT, -1 }, nil, 0) // Maxt does not matter.
 	testutil.Ok(t, err)
 
 	// Query all three samples except for the first one. Since we round up queried data
@@ -194,7 +194,7 @@ func TestPrometheusStore_SeriesLabels_e2e(t *testing.T) {
 
 	promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil)
+		func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil, 0)
 	testutil.Ok(t, err)
 
 	for _, tcase := range []struct {
@@ -364,7 +364,7 @@ func TestPrometheusStore_LabelAPIs(t *testing.T) {
 
 		promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar, func() labels.Labels {
 			return extLset
-		}, nil, func() string { return version })
+		}, nil, func() string { return version }, 0)
 		testutil.Ok(t, err)
 
 		return promStore
@@ -399,7 +399,7 @@ func TestPrometheusStore_Series_MatchExternalLabel(t *testing.T) {
 
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return 0, math.MaxInt64 }, nil)
+		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
 	testutil.Ok(t, err)
 	srv := newStoreSeriesServer(ctx)
 
@@ -433,6 +433,101 @@ func TestPrometheusStore_Series_MatchExternalLabel(t *testing.T) {
 	testutil.Equals(t, 0, len(srv.SeriesSet))
 }
 
+func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
+	defer custom.TolerantVerifyLeak(t)
+
+	p, err := e2eutil.NewPrometheus()
+	testutil.Ok(t, err)
+	defer func() { testutil.Ok(t, p.Stop()) }()
+
+	baseT := timestamp.FromTime(time.Now()) / 1000 * 1000
+
+	a := p.Appender()
+
+	_, err = a.Append(0, labels.FromStrings("a", "b", "b", "d"), baseT+100, 1)
+	testutil.Ok(t, err)
+	_, err = a.Append(0, labels.FromStrings("a", "c", "b", "d", "job", "test"), baseT+200, 2)
+	testutil.Ok(t, err)
+	_, err = a.Append(0, labels.FromStrings("a", "d", "b", "d", "job", "test"), baseT+300, 3)
+	testutil.Ok(t, err)
+	_, err = a.Append(0, labels.FromStrings("b", "d", "job", "test"), baseT+400, 4)
+	testutil.Ok(t, err)
+
+	testutil.Ok(t, a.Commit())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	testutil.Ok(t, p.Start())
+
+	u, err := url.Parse(fmt.Sprintf("http://%s", p.Addr()))
+	testutil.Ok(t, err)
+
+	req := &storepb.SeriesRequest{
+		SkipChunks: true,
+		Matchers: []storepb.LabelMatcher{
+			{Type: storepb.LabelMatcher_EQ, Name: "job", Value: "test"},
+		},
+		MinTime: baseT,
+		MaxTime: baseT + 300,
+	}
+
+	expected2Series := []storepb.Series{
+		{
+			Labels: []labelpb.ZLabel{{Name: "a", Value: "c"}, {Name: "b", Value: "d"}, {Name: "job", Value: "test"}, {Name: "region", Value: "eu-west"}},
+		},
+		{
+			Labels: []labelpb.ZLabel{{Name: "a", Value: "d"}, {Name: "b", Value: "d"}, {Name: "job", Value: "test"}, {Name: "region", Value: "eu-west"}},
+		},
+	}
+
+	for i, tcase := range []struct {
+		req                   *storepb.SeriesRequest
+		expected              []storepb.Series
+		expectedErr           error
+		limitMaxMatchedSeries int
+	}{
+		// limit is not active
+		{
+			limitMaxMatchedSeries: 0,
+			req:                   req,
+			expected:              expected2Series,
+		},
+		// should return limit error as 'limit < matched series'
+		{
+			limitMaxMatchedSeries: 1,
+			req:                   req,
+			expected:              expected2Series,
+			expectedErr:           ErrSeriesMatchLimitReached,
+		},
+		// should succeed as limit is not reached
+		{
+			limitMaxMatchedSeries: 2,
+			req:                   req,
+			expected:              expected2Series,
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
+				func() labels.Labels { return labels.FromStrings("region", "eu-west") },
+				func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil,
+				tcase.limitMaxMatchedSeries)
+			testutil.Ok(t, err)
+
+			srv := newStoreSeriesServer(ctx)
+			err = promStore.Series(tcase.req, srv)
+			if tcase.expectedErr != nil {
+				testutil.NotOk(t, err)
+				testutil.Equals(t, tcase.expectedErr.Error(), err.Error())
+				return
+			}
+			testutil.Ok(t, err)
+			testutil.Equals(t, []string(nil), srv.Warnings)
+			testutil.Equals(t, tcase.expected, srv.SeriesSet)
+		})
+	}
+}
+
 func TestPrometheusStore_Series_ChunkHashCalculation_Integration(t *testing.T) {
 	defer custom.TolerantVerifyLeak(t)
 
@@ -461,7 +556,7 @@ func TestPrometheusStore_Series_ChunkHashCalculation_Integration(t *testing.T) {
 
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return 0, math.MaxInt64 }, nil)
+		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
 	testutil.Ok(t, err)
 	srv := newStoreSeriesServer(ctx)
 
@@ -490,7 +585,7 @@ func TestPrometheusStore_Info(t *testing.T) {
 
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), nil, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return 123, 456 }, nil)
+		func() (int64, int64) { return 123, 456 }, nil, 0)
 	testutil.Ok(t, err)
 
 	resp, err := proxy.Info(ctx, &storepb.InfoRequest{})
@@ -568,7 +663,7 @@ func TestPrometheusStore_Series_SplitSamplesIntoChunksWithMaxSizeOf120(t *testin
 
 		proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 			func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-			func() (int64, int64) { return 0, math.MaxInt64 }, nil)
+			func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
 		testutil.Ok(t, err)
 
 		// We build chunks only for SAMPLES method. Make sure we ask for SAMPLES only.
