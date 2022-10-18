@@ -119,7 +119,12 @@ func NewCachingBucketFromYaml(yamlContent []byte, bucket objstore.Bucket, logger
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create groupcache")
 		}
-
+	case string(RUEIDIS):
+		rueidis, err := cacheutil.NewRueidisClient(logger, "caching-cache", backendConfig, reg)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create redis client")
+		}
+		c = cache.NewRueidisCache("caching-bucket", logger, rueidis, reg)
 	case string(RedisBucketCacheProvider):
 		redisCache, err := cacheutil.NewRedisClient(logger, "caching-bucket", backendConfig, reg)
 		if err != nil {

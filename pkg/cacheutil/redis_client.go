@@ -60,6 +60,8 @@ type RedisClientConfig struct {
 	// Addr specifies the addresses of redis server.
 	Addr string `yaml:"addr"`
 
+	Addrs []string `yaml:"addrs"`
+
 	// Use the specified Username to authenticate the current connection
 	// with one of the connections defined in the ACL list when connecting
 	// to a Redis 6.0 instance, or greater, that is using the Redis ACL system.
@@ -72,6 +74,8 @@ type RedisClientConfig struct {
 
 	// DB Database to be selected after connecting to the server.
 	DB int `yaml:"db"`
+
+	CacheSize int `yaml:"cachesize"`
 
 	// DialTimeout specifies the client dial timeout.
 	DialTimeout time.Duration `yaml:"dial_timeout"`
@@ -120,7 +124,7 @@ type RedisClientConfig struct {
 }
 
 func (c *RedisClientConfig) validate() error {
-	if c.Addr == "" {
+	if c.Addr == "" && len(c.Addrs) == 0 {
 		return errors.New("no redis addr provided")
 	}
 

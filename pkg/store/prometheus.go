@@ -56,7 +56,12 @@ type PrometheusStore struct {
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 
 	framesRead prometheus.Histogram
+
+	limitMaxMatchedSeries int
 }
+
+// ErrSeriesMatchLimitReached is an error returned by PrometheusStore when matched series limit is enabled and matched series count exceeds the limit.
+var ErrSeriesMatchLimitReached = errors.New("series match limit reached")
 
 // Label{Values,Names} call with matchers is supported for Prometheus versions >= 2.24.0.
 // https://github.com/prometheus/prometheus/commit/caa173d2aac4c390546b1f78302104b1ccae0878.
@@ -76,6 +81,7 @@ func NewPrometheusStore(
 	externalLabelsFn func() labels.Labels,
 	timestamps func() (mint int64, maxt int64),
 	promVersion func() string,
+	limitMaxMatchedSeries int,
 ) (*PrometheusStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -100,6 +106,7 @@ func NewPrometheusStore(
 				Buckets: prometheus.ExponentialBuckets(10, 10, 5),
 			},
 		),
+		limitMaxMatchedSeries: limitMaxMatchedSeries,
 	}
 	return p, nil
 }
@@ -139,6 +146,10 @@ func (p *PrometheusStore) putBuffer(b *[]byte) {
 	p.buffers.Put(b)
 }
 
+type timerange struct {
+	mintime, maxtime int64
+}
+
 // Series returns all series for a requested time range and label matcher.
 func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_SeriesServer) error {
 	extLset := p.externalLabelsFn()
@@ -152,6 +163,17 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	}
 	if len(matchers) == 0 {
 		return status.Error(codes.InvalidArgument, "no matchers specified (excluding external labels)")
+	}
+
+	if p.limitMaxMatchedSeries > 0 {
+		matchedSeriesCount, err := p.client.SeriesMatchCount(s.Context(), p.base, matchers, r.MinTime, r.MaxTime)
+		if err != nil {
+			return errors.Wrap(err, "get series match count")
+		}
+
+		if matchedSeriesCount > p.limitMaxMatchedSeries {
+			return ErrSeriesMatchLimitReached
+		}
 	}
 
 	// Don't ask for more than available time. This includes potential `minTime` flag limit.
@@ -201,29 +223,46 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 		return p.queryPrometheus(s, r)
 	}
 
-	q := &prompb.Query{StartTimestampMs: r.MinTime, EndTimestampMs: r.MaxTime}
-	for _, m := range matchers {
-		pm := &prompb.LabelMatcher{Name: m.Name, Value: m.Value}
-
-		switch m.Type {
-		case labels.MatchEqual:
-			pm.Type = prompb.LabelMatcher_EQ
-		case labels.MatchNotEqual:
-			pm.Type = prompb.LabelMatcher_NEQ
-		case labels.MatchRegexp:
-			pm.Type = prompb.LabelMatcher_RE
-		case labels.MatchNotRegexp:
-			pm.Type = prompb.LabelMatcher_NRE
-		default:
-			return errors.New("unrecognized matcher type")
+	timeranges := []timerange{}
+	if r.QueryHints != nil {
+		if r.QueryHints.Range.Millis != 0 && r.QueryHints.Range.Millis*4 < r.QueryHints.StepMillis {
+			for ts := r.MinTime; ts <= r.MaxTime; ts += r.QueryHints.StepMillis {
+				timeranges = append(timeranges, timerange{ts, ts + r.QueryHints.Range.Millis})
+			}
 		}
-		q.Matchers = append(q.Matchers, pm)
+	}
+
+	if len(timeranges) == 0 {
+		timeranges = []timerange{{r.MinTime, r.MaxTime}}
+	}
+
+	queries := []*prompb.Query{}
+	for _, tr := range timeranges {
+		q := &prompb.Query{StartTimestampMs: tr.mintime, EndTimestampMs: tr.maxtime}
+		for _, m := range matchers {
+			pm := &prompb.LabelMatcher{Name: m.Name, Value: m.Value}
+
+			switch m.Type {
+			case labels.MatchEqual:
+				pm.Type = prompb.LabelMatcher_EQ
+			case labels.MatchNotEqual:
+				pm.Type = prompb.LabelMatcher_NEQ
+			case labels.MatchRegexp:
+				pm.Type = prompb.LabelMatcher_RE
+			case labels.MatchNotRegexp:
+				pm.Type = prompb.LabelMatcher_NRE
+			default:
+				return errors.New("unrecognized matcher type")
+			}
+			q.Matchers = append(q.Matchers, pm)
+		}
+		queries = append(queries, q)
 	}
 
 	queryPrometheusSpan, ctx := tracing.StartSpan(s.Context(), "query_prometheus")
-	queryPrometheusSpan.SetTag("query.request", q.String())
+	queryPrometheusSpan.SetTag("query.request", queries[0].String())
 
-	httpResp, err := p.startPromRemoteRead(ctx, q)
+	httpResp, err := p.startPromRemoteRead(ctx, queries)
 	if err != nil {
 		queryPrometheusSpan.Finish()
 		return errors.Wrap(err, "query Prometheus")
@@ -320,36 +359,42 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(s storepb.Store_Series
 
 	span, _ := tracing.StartSpan(s.Context(), "transform_and_respond")
 	defer span.Finish()
-	span.SetTag("series_count", len(resp.Results[0].Timeseries))
+	seriesCount := 0
 
-	for _, e := range resp.Results[0].Timeseries {
-		lset := labelpb.ExtendSortedLabels(labelpb.ZLabelsToPromLabels(e.Labels), extLset)
-		if len(e.Samples) == 0 {
-			// As found in https://github.com/thanos-io/thanos/issues/381
-			// Prometheus can give us completely empty time series. Ignore these with log until we figure out that
-			// this is expected from Prometheus perspective.
-			level.Warn(p.logger).Log(
-				"msg",
-				"found timeseries without any chunk. See https://github.com/thanos-io/thanos/issues/381 for details",
-				"lset",
-				fmt.Sprintf("%v", lset),
-			)
-			continue
-		}
+	for _, r := range resp.Results {
+		for _, e := range r.Timeseries {
+			seriesCount++
+			lset := labelpb.ExtendSortedLabels(labelpb.ZLabelsToPromLabels(e.Labels), extLset)
+			if len(e.Samples) == 0 {
+				// As found in https://github.com/thanos-io/thanos/issues/381
+				// Prometheus can give us completely empty time series. Ignore these with log until we figure out that
+				// this is expected from Prometheus perspective.
+				level.Warn(p.logger).Log(
+					"msg",
+					"found timeseries without any chunk. See https://github.com/thanos-io/thanos/issues/381 for details",
+					"lset",
+					fmt.Sprintf("%v", lset),
+				)
+				continue
+			}
 
-		aggregatedChunks, err := p.chunkSamples(e, MaxSamplesPerChunk)
-		if err != nil {
-			return err
-		}
+			aggregatedChunks, err := p.chunkSamples(e, MaxSamplesPerChunk)
+			if err != nil {
+				return err
+			}
 
-		if err := s.Send(storepb.NewSeriesResponse(&storepb.Series{
-			Labels: labelpb.ZLabelsFromPromLabels(lset),
-			Chunks: aggregatedChunks,
-		})); err != nil {
-			return err
+			if err := s.Send(storepb.NewSeriesResponse(&storepb.Series{
+				Labels: labelpb.ZLabelsFromPromLabels(lset),
+				Chunks: aggregatedChunks,
+			})); err != nil {
+				return err
+			}
 		}
 	}
-	level.Debug(p.logger).Log("msg", "handled ReadRequest_SAMPLED request.", "series", len(resp.Results[0].Timeseries))
+
+	span.SetTag("series_count", seriesCount)
+
+	level.Debug(p.logger).Log("msg", "handled ReadRequest_SAMPLED request.", "series", seriesCount)
 	return nil
 }
 
@@ -521,9 +566,9 @@ func (p *PrometheusStore) chunkSamples(series *prompb.TimeSeries, maxSamplesPerC
 	return chks, nil
 }
 
-func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, q *prompb.Query) (presp *http.Response, err error) {
+func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, queries []*prompb.Query) (presp *http.Response, err error) {
 	reqb, err := proto.Marshal(&prompb.ReadRequest{
-		Queries:               []*prompb.Query{q},
+		Queries:               queries,
 		AcceptedResponseTypes: p.remoteReadAcceptableResponses,
 	})
 	if err != nil {
