@@ -73,7 +73,7 @@ require (
 	github.com/rueian/rueidis v0.0.80
 	github.com/sony/gobreaker v0.5.0
 	github.com/stretchr/testify v1.8.0
-	github.com/thanos-community/promql-engine v0.0.0-20221004075442-da92170150df
+	github.com/thanos-community/promql-engine v0.0.0-20221017120219-67a4593d95a3
 	github.com/thanos-io/objstore v0.0.0-20221006135717-79dcec7fe604
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
@@ -290,3 +290,5 @@ replace (
 )
 
 replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b
+
+replace github.com/thanos-community/promql-engine => github.com/GiedriusS/promql-engine v0.0.0-20221018070347-003b77f058a3
