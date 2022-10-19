@@ -291,4 +291,4 @@ replace (
 
 replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b
 
-replace github.com/thanos-community/promql-engine => github.com/GiedriusS/promql-engine v0.0.0-20221018070347-003b77f058a3
+replace github.com/thanos-community/promql-engine => github.com/GiedriusS/promql-engine v0.0.0-20221019075145-c6b1e8064922
