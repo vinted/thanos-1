@@ -83,8 +83,6 @@ github.com/AzureAD/microsoft-authentication-library-for-go v0.5.1/go.mod h1:Vt9s
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
-github.com/GiedriusS/promql-engine v0.0.0-20221019075145-c6b1e8064922 h1:e2rmAZzgI0mIfyzzHASpImLLfLfjUkOBBVDV0iZQv2Y=
-github.com/GiedriusS/promql-engine v0.0.0-20221019075145-c6b1e8064922/go.mod h1:yHSkMOTkwTMqy/Txr7ubTEq3f7UwduwQ8OvvNhfq1Z4=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.8.3 h1:i84ZOPT35YCJROyuf97VP/VEdYhQce/8NTLOWq5tqJw=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.8.3/go.mod h1:3+qm+VCJbVmQ9uscVz+8h1rRkJEy9ZNFGgpT1XB9mPg=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.32.3 h1:FhsH8qgWFkkPlPXBZ68uuT/FH/R+DLTtVPxjLEBs1v4=
@@ -980,6 +978,8 @@ github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijb
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b h1:H0DX65Gffby6rnTCOPsVbJr7SPtm15iXlmcQamz4Lj0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b/go.mod h1:c+P8gk6s+I+yURJ6laXnNZUJOf0jwjN+CCiie4lGQuc=
+github.com/vinted/promql-engine v0.0.0-20221024101840-6eba6a3a07ab h1:HUpRjYZOwqRWtu7cmuLQo9WzJrNRrDFr7+Wh/i64RGU=
+github.com/vinted/promql-engine v0.0.0-20221024101840-6eba6a3a07ab/go.mod h1:yHSkMOTkwTMqy/Txr7ubTEq3f7UwduwQ8OvvNhfq1Z4=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae h1:Z8YibUpdBEdCq8nwrYXJQ8vYooevbmEBIdFpseXK3/8=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae/go.mod h1:YfOOLoW1Q/jIIu0WLeSwgStmrKjuJEZSKTAUc+0KFvE=
