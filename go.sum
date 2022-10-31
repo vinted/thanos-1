@@ -889,8 +889,8 @@ github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTE
 github.com/rs/cors v1.8.2/go.mod h1:XyqrcTp5zjWr1wsJ8PIRZssZ8b/WMcMf71DJnit4EMU=
 github.com/rs/xid v1.4.0 h1:qd7wPTDkN6KQx2VmMBLrpHkiyQwgFXRnkOLacUiaSNY=
 github.com/rs/xid v1.4.0/go.mod h1:trrq9SKmegXys3aeAKXMUTdJsYXVwGY3RLcfgqegfbg=
-github.com/rueian/rueidis v0.0.80 h1:HfhTWc4gk7dMWd9vl7EVE4NkgMGjYFsyyhi6B6JV+b4=
-github.com/rueian/rueidis v0.0.80/go.mod h1:LiKWMM/QnILwRfDZIhSIXi4vQqZ/UZy4+/aNkSCt8XA=
+github.com/rueian/rueidis v0.0.82 h1:WwGiOln7r+V2GrjBgg7oTrKm7THk+UPi8Uq0UfgLUF4=
+github.com/rueian/rueidis v0.0.82/go.mod h1:LiKWMM/QnILwRfDZIhSIXi4vQqZ/UZy4+/aNkSCt8XA=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/ryanuber/columnize v0.0.0-20160712163229-9b3edd62028f/go.mod h1:sm1tb6uqfes/u+d4ooFouqFdy9/2g9QGwK3SQygK0Ts=
 github.com/ryanuber/columnize v2.1.0+incompatible/go.mod h1:sm1tb6uqfes/u+d4ooFouqFdy9/2g9QGwK3SQygK0Ts=
@@ -978,8 +978,8 @@ github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijb
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b h1:H0DX65Gffby6rnTCOPsVbJr7SPtm15iXlmcQamz4Lj0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b/go.mod h1:c+P8gk6s+I+yURJ6laXnNZUJOf0jwjN+CCiie4lGQuc=
-github.com/vinted/promql-engine v0.0.0-20221025073014-4342fbdbce58 h1:mIsyHos3lOqY2mH4+uOsUnqbIOaIHfF2DKqAoUbYcEs=
-github.com/vinted/promql-engine v0.0.0-20221025073014-4342fbdbce58/go.mod h1:REz4kWZKoCMIlcdisdfXnH1jCZRCnAVc571wfDORKGE=
+github.com/vinted/promql-engine v0.0.0-20221031082609-d2e8b3d5f06a h1:KDeL8WjVtGYVhm8zVdjJOC1j4lN+tEz2+E8PYhXPOc0=
+github.com/vinted/promql-engine v0.0.0-20221031082609-d2e8b3d5f06a/go.mod h1:jqJeiwGeyVFvv9J5GVTtvqlVwiFZaWzUsnU1PgEBnPs=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae h1:Z8YibUpdBEdCq8nwrYXJQ8vYooevbmEBIdFpseXK3/8=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae/go.mod h1:YfOOLoW1Q/jIIu0WLeSwgStmrKjuJEZSKTAUc+0KFvE=

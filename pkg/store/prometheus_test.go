@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -430,7 +432,7 @@ func TestPrometheusStore_Series_MatchExternalLabel(t *testing.T) {
 	testutil.Equals(t, 0, len(srv.SeriesSet))
 }
 
-func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
+func TestPrometheusStore_Series_ChunkHashCalculation_Integration(t *testing.T) {
 	defer testutil.TolerantVerifyLeak(t)
 
 	p, err := e2eutil.NewPrometheus()
@@ -440,13 +442,11 @@ func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
 	baseT := timestamp.FromTime(time.Now()) / 1000 * 1000
 
 	a := p.Appender()
-	_, err = a.Append(0, labels.FromStrings("a", "b", "b", "d"), baseT+100, 1)
+	_, err = a.Append(0, labels.FromStrings("a", "b"), baseT+100, 1)
 	testutil.Ok(t, err)
-	_, err = a.Append(0, labels.FromStrings("a", "c", "b", "d", "job", "test"), baseT+200, 2)
+	_, err = a.Append(0, labels.FromStrings("a", "b"), baseT+200, 2)
 	testutil.Ok(t, err)
-	_, err = a.Append(0, labels.FromStrings("a", "d", "b", "d", "job", "test"), baseT+300, 3)
-	testutil.Ok(t, err)
-	_, err = a.Append(0, labels.FromStrings("b", "d", "job", "test"), baseT+400, 4)
+	_, err = a.Append(0, labels.FromStrings("a", "b"), baseT+300, 3)
 	testutil.Ok(t, err)
 	testutil.Ok(t, a.Commit())
 
@@ -458,68 +458,26 @@ func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
 	u, err := url.Parse(fmt.Sprintf("http://%s", p.Addr()))
 	testutil.Ok(t, err)
 
-	req := &storepb.SeriesRequest{
-		SkipChunks: true,
-		Matchers: []storepb.LabelMatcher{
-			{Type: storepb.LabelMatcher_EQ, Name: "job", Value: "test"},
-		},
-		MinTime: baseT,
+	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
+		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
+		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
+	testutil.Ok(t, err)
+	srv := newStoreSeriesServer(ctx)
+
+	testutil.Ok(t, proxy.Series(&storepb.SeriesRequest{
+		MinTime: baseT + 101,
 		MaxTime: baseT + 300,
-	}
+		Matchers: []storepb.LabelMatcher{
+			{Name: "a", Value: "b"},
+			{Type: storepb.LabelMatcher_EQ, Name: "region", Value: "eu-west"},
+		},
+	}, srv))
+	testutil.Equals(t, 1, len(srv.SeriesSet))
 
-	expected2Series := []storepb.Series{
-		{
-			Labels: []labelpb.ZLabel{{Name: "a", Value: "c"}, {Name: "b", Value: "d"}, {Name: "job", Value: "test"}, {Name: "region", Value: "eu-west"}},
-		},
-		{
-			Labels: []labelpb.ZLabel{{Name: "a", Value: "d"}, {Name: "b", Value: "d"}, {Name: "job", Value: "test"}, {Name: "region", Value: "eu-west"}},
-		},
-	}
-
-	for _, tcase := range []struct {
-		req                   *storepb.SeriesRequest
-		expected              []storepb.Series
-		expectedErr           error
-		limitMaxMatchedSeries int
-	}{
-		// limit is not active
-		{
-			limitMaxMatchedSeries: 0,
-			req:                   req,
-			expected:              expected2Series,
-		},
-		// should return limit error as 'limit < matched series'
-		{
-			limitMaxMatchedSeries: 1,
-			req:                   req,
-			expected:              expected2Series,
-			expectedErr:           ErrSeriesMatchLimitReached,
-		},
-		// should succeed as limit is not reached
-		{
-			limitMaxMatchedSeries: 2,
-			req:                   req,
-			expected:              expected2Series,
-		},
-	} {
-		t.Run("", func(t *testing.T) {
-			promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
-				func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-				func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil,
-				tcase.limitMaxMatchedSeries)
-			testutil.Ok(t, err)
-
-			srv := newStoreSeriesServer(ctx)
-			err = promStore.Series(tcase.req, srv)
-			if tcase.expectedErr != nil {
-				testutil.NotOk(t, err)
-				testutil.Equals(t, tcase.expectedErr.Error(), err.Error())
-				return
-			}
-			testutil.Ok(t, err)
-			testutil.Equals(t, []string(nil), srv.Warnings)
-			testutil.Equals(t, tcase.expected, srv.SeriesSet)
-		})
+	for _, chunk := range srv.SeriesSet[0].Chunks {
+		got := chunk.Raw.Hash
+		want := xxhash.Sum64(chunk.Raw.Data)
+		testutil.Equals(t, want, got)
 	}
 }
 

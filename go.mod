@@ -70,7 +70,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.7.1
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.39.1
-	github.com/rueian/rueidis v0.0.80
+	github.com/rueian/rueidis v0.0.82
 	github.com/sony/gobreaker v0.5.0
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-community/promql-engine v0.0.0-20221017120219-67a4593d95a3
@@ -291,4 +291,4 @@ replace (
 
 replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b
 
-replace github.com/thanos-community/promql-engine => github.com/vinted/promql-engine v0.0.0-20221025073014-4342fbdbce58
+replace github.com/thanos-community/promql-engine => github.com/vinted/promql-engine v0.0.0-20221031082609-d2e8b3d5f06a
