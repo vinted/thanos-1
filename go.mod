@@ -70,7 +70,7 @@ require (
 	github.com/prometheus/exporter-toolkit v0.7.1
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.39.1
-	github.com/rueian/rueidis v0.0.80
+	github.com/rueian/rueidis v0.0.82
 	github.com/sony/gobreaker v0.5.0
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-community/promql-engine v0.0.0-20221017120219-67a4593d95a3
