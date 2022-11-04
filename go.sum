@@ -978,8 +978,8 @@ github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijb
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b h1:H0DX65Gffby6rnTCOPsVbJr7SPtm15iXlmcQamz4Lj0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b/go.mod h1:c+P8gk6s+I+yURJ6laXnNZUJOf0jwjN+CCiie4lGQuc=
-github.com/vinted/promql-engine v0.0.0-20221031082609-d2e8b3d5f06a h1:KDeL8WjVtGYVhm8zVdjJOC1j4lN+tEz2+E8PYhXPOc0=
-github.com/vinted/promql-engine v0.0.0-20221031082609-d2e8b3d5f06a/go.mod h1:jqJeiwGeyVFvv9J5GVTtvqlVwiFZaWzUsnU1PgEBnPs=
+github.com/vinted/promql-engine v0.0.0-20221104091723-c29d27730049 h1:2PlAfEiJN/HATJ0wIIlUhLILPBVK8YA6pg8z5CrCpbE=
+github.com/vinted/promql-engine v0.0.0-20221104091723-c29d27730049/go.mod h1:REz4kWZKoCMIlcdisdfXnH1jCZRCnAVc571wfDORKGE=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae h1:Z8YibUpdBEdCq8nwrYXJQ8vYooevbmEBIdFpseXK3/8=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae/go.mod h1:YfOOLoW1Q/jIIu0WLeSwgStmrKjuJEZSKTAUc+0KFvE=
