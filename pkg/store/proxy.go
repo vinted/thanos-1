@@ -277,6 +277,8 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 		stores = append(stores, st)
 	}
 
+	r.MaximumStringSlots = maxStringsPerStore(uint64(len(stores)))
+
 	if len(stores) == 0 {
 		err := errors.New("No StoreAPIs matched for this query")
 		level.Warn(reqLogger).Log("err", err, "stores", strings.Join(storeDebugMsgs, ";"))
@@ -287,14 +289,17 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 		return nil
 	}
 
+	adjusterFactory := NewReferenceAdjusterFactory(uint64(len(stores)))
+
 	storeResponses := make([]respSet, 0, len(stores))
 
-	for _, st := range stores {
+	for storeIndex, st := range stores {
 		st := st
 
 		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
 
-		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, st.SupportsSharding(), &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses)
+		adjuster := adjusterFactory(uint64(storeIndex))
+		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, st.SupportsSharding(), &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses, adjuster)
 		if err != nil {
 			level.Error(reqLogger).Log("err", err)
 
