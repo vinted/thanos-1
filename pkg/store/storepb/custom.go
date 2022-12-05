@@ -483,17 +483,15 @@ type SeriesStatsCounter struct {
 	Samples int
 }
 
-func (c *SeriesStatsCounter) CountSeries(seriesLabels []labelpb.ZLabel) {
-	seriesHash := labelpb.HashWithPrefix("", seriesLabels)
-	if c.lastSeriesHash != 0 || seriesHash != c.lastSeriesHash {
-		c.lastSeriesHash = seriesHash
+func (c *SeriesStatsCounter) CountSeries(seriesLabelsHash uint64) {
+	if c.lastSeriesHash != 0 || seriesLabelsHash != c.lastSeriesHash {
+		c.lastSeriesHash = seriesLabelsHash
 		c.Series++
 	}
 }
 
-func (c *SeriesStatsCounter) Count(series *Series) {
-	c.CountSeries(series.Labels)
-	for _, chk := range series.Chunks {
+func (c *SeriesStatsCounter) countChks(chks []AggrChunk) {
+	for _, chk := range chks {
 		if chk.Raw != nil {
 			c.Chunks++
 			c.Samples += chk.Raw.XORNumSamples()
@@ -524,6 +522,25 @@ func (c *SeriesStatsCounter) Count(series *Series) {
 			c.Samples += chk.Sum.XORNumSamples()
 		}
 	}
+}
+
+func (s *CompressedSeries) Count(counter *SeriesStatsCounter) {
+	counter.CountSeries(labelpb.HashCompressedWithPrefix("", s.Labels))
+	counter.countChks(s.Chunks)
+
+}
+
+func (s *Series) Count(counter *SeriesStatsCounter) {
+	counter.CountSeries(labelpb.HashWithPrefix("", s.Labels))
+	counter.countChks(s.Chunks)
+}
+
+type countableSeries interface {
+	Count(*SeriesStatsCounter)
+}
+
+func (c *SeriesStatsCounter) Count(series countableSeries) {
+	series.Count(c)
 }
 
 func (m *SeriesRequest) ToPromQL() string {

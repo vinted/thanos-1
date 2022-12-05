@@ -462,6 +462,7 @@ func newLazyRespSet(
 
 				if resp.GetCompressedSeries() != nil {
 					cs := resp.GetCompressedSeries()
+					seriesStats.Count(cs)
 
 					stringCnt += uint64(len(cs.Labels))
 
@@ -749,6 +750,7 @@ func newEagerRespSet(
 
 				if resp.GetCompressedSeries() != nil {
 					cs := resp.GetCompressedSeries()
+					seriesStats.Count(cs)
 
 					stringCnt += uint64(len(cs.Labels))
 
