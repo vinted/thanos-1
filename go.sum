@@ -889,8 +889,6 @@ github.com/rogpeppe/go-internal v1.6.1/go.mod h1:xXDCJY+GAPziupqXw64V24skbSoqbTE
 github.com/rs/cors v1.8.2/go.mod h1:XyqrcTp5zjWr1wsJ8PIRZssZ8b/WMcMf71DJnit4EMU=
 github.com/rs/xid v1.4.0 h1:qd7wPTDkN6KQx2VmMBLrpHkiyQwgFXRnkOLacUiaSNY=
 github.com/rs/xid v1.4.0/go.mod h1:trrq9SKmegXys3aeAKXMUTdJsYXVwGY3RLcfgqegfbg=
-github.com/rueian/rueidis v0.0.82 h1:WwGiOln7r+V2GrjBgg7oTrKm7THk+UPi8Uq0UfgLUF4=
-github.com/rueian/rueidis v0.0.82/go.mod h1:LiKWMM/QnILwRfDZIhSIXi4vQqZ/UZy4+/aNkSCt8XA=
 github.com/rueian/rueidis v0.0.84 h1:051zL2fRxgWDv5NMltzt6+SuaGLmXPu8ai90CK6dTZQ=
 github.com/rueian/rueidis v0.0.84/go.mod h1:LiKWMM/QnILwRfDZIhSIXi4vQqZ/UZy4+/aNkSCt8XA=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
@@ -980,8 +978,8 @@ github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijb
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b h1:H0DX65Gffby6rnTCOPsVbJr7SPtm15iXlmcQamz4Lj0=
 github.com/vinted/prometheus v1.8.2-0.20221017101217-e895ef3dbe4b/go.mod h1:c+P8gk6s+I+yURJ6laXnNZUJOf0jwjN+CCiie4lGQuc=
-github.com/vinted/promql-engine v0.0.0-20221104091723-c29d27730049 h1:2PlAfEiJN/HATJ0wIIlUhLILPBVK8YA6pg8z5CrCpbE=
-github.com/vinted/promql-engine v0.0.0-20221104091723-c29d27730049/go.mod h1:REz4kWZKoCMIlcdisdfXnH1jCZRCnAVc571wfDORKGE=
+github.com/vinted/promql-engine v0.0.0-20221205101229-9ef452546ade h1:OEwEuz6SI7jrcYSH0N1696hDAMRKgd5h8X4C6PPfeaE=
+github.com/vinted/promql-engine v0.0.0-20221205101229-9ef452546ade/go.mod h1:e3BzS0UVlHOKQa5STt/C0elYAa4Qp/7jyzp/Xf+e0C0=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae h1:Z8YibUpdBEdCq8nwrYXJQ8vYooevbmEBIdFpseXK3/8=
 github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae/go.mod h1:YfOOLoW1Q/jIIu0WLeSwgStmrKjuJEZSKTAUc+0KFvE=
