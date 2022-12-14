@@ -139,6 +139,7 @@ func runReceive(
 		conf.rwClientKey,
 		conf.rwClientServerCA,
 		conf.rwClientServerName,
+		0,
 	)
 	if err != nil {
 		return err

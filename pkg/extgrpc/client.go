@@ -16,16 +16,23 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/thanos-io/thanos/pkg/extgrpc/grpccache"
+	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/tls"
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
 
 // StoreClientGRPCOpts creates gRPC dial options for connecting to a store client.
-func StoreClientGRPCOpts(logger log.Logger, reg *prometheus.Registry, tracer opentracing.Tracer, secure, skipVerify bool, cert, key, caCert, serverName string) ([]grpc.DialOption, error) {
+func StoreClientGRPCOpts(logger log.Logger, reg *prometheus.Registry, tracer opentracing.Tracer, secure, skipVerify bool, cert, key, caCert, serverName string, maxCacheSize model.Bytes) ([]grpc.DialOption, error) {
 	grpcMets := grpc_prometheus.NewClientMetrics()
 	grpcMets.EnableClientHandlingTimeHistogram(
 		grpc_prometheus.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120, 240, 360, 720}),
 	)
+
+	cacher, err := grpccache.NewSeriesRequestcachingInterceptor(reg, maxCacheSize, 128*1024*1024)
+	if err != nil {
+		return nil, err
+	}
 	dialOpts := []grpc.DialOption{
 		// We want to make sure that we can receive huge gRPC messages from storeAPI.
 		// On TCP level we can be fine, but the gRPC overhead for huge messages could be significant.
@@ -42,6 +49,7 @@ func StoreClientGRPCOpts(logger log.Logger, reg *prometheus.Registry, tracer ope
 			grpc_middleware.ChainStreamClient(
 				grpcMets.StreamClientInterceptor(),
 				tracing.StreamClientInterceptor(tracer),
+				cacher.GetInterceptor(),
 			),
 		),
 	}
