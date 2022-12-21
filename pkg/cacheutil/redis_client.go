@@ -6,6 +6,7 @@ package cacheutil
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -121,6 +122,8 @@ type RedisClientConfig struct {
 
 	// TLSConfig to use to connect to the redis server.
 	TLSConfig TLSConfig `yaml:"tls_config"`
+
+	MasterName string `yaml:"master_name"`
 }
 
 func (c *RedisClientConfig) validate() error {
@@ -133,7 +136,7 @@ func (c *RedisClientConfig) validate() error {
 
 // RedisClient is a wrap of redis.Client.
 type RedisClient struct {
-	*redis.Client
+	Client redis.UniversalClient
 	config RedisClientConfig
 
 	// getMultiGate used to enforce the max number of concurrent GetMulti() operations.
@@ -165,8 +168,8 @@ func NewRedisClientWithConfig(logger log.Logger, name string, config RedisClient
 		return nil, err
 	}
 
-	opts := &redis.Options{
-		Addr:         config.Addr,
+	opts := &redis.UniversalOptions{
+		Addrs:        strings.Split(config.Addr, ","),
 		Username:     config.Username,
 		Password:     config.Password,
 		DB:           config.DB,
@@ -176,6 +179,7 @@ func NewRedisClientWithConfig(logger log.Logger, name string, config RedisClient
 		MinIdleConns: config.MinIdleConns,
 		MaxConnAge:   config.MaxConnAge,
 		IdleTimeout:  config.IdleTimeout,
+		MasterName:   config.MasterName,
 	}
 
 	if config.TLSEnabled {
@@ -191,7 +195,7 @@ func NewRedisClientWithConfig(logger log.Logger, name string, config RedisClient
 		opts.TLSConfig = tlsClientConfig
 	}
 
-	redisClient := redis.NewClient(opts)
+	redisClient := redis.NewUniversalClient(opts)
 	if reg != nil {
 		reg = prometheus.WrapRegistererWith(prometheus.Labels{"name": name}, reg)
 	}
@@ -223,7 +227,7 @@ func NewRedisClientWithConfig(logger log.Logger, name string, config RedisClient
 // SetAsync implement RemoteCacheClient.
 func (c *RedisClient) SetAsync(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	start := time.Now()
-	if _, err := c.Set(ctx, key, value, ttl).Result(); err != nil {
+	if _, err := c.Client.Set(ctx, key, value, ttl).Result(); err != nil {
 		level.Warn(c.logger).Log("msg", "failed to set item into redis", "err", err, "key", key,
 			"value_size", len(value))
 		return nil
@@ -243,7 +247,7 @@ func (c *RedisClient) SetMulti(ctx context.Context, data map[string][]byte, ttl 
 		keys = append(keys, k)
 	}
 	err := doWithBatch(ctx, len(data), c.config.SetMultiBatchSize, c.setMultiGate, func(startIndex, endIndex int) error {
-		_, err := c.Pipelined(ctx, func(p redis.Pipeliner) error {
+		_, err := c.Client.Pipelined(ctx, func(p redis.Pipeliner) error {
 			for _, key := range keys {
 				p.SetEX(ctx, key, data[key], ttl)
 			}
@@ -274,7 +278,7 @@ func (c *RedisClient) GetMulti(ctx context.Context, keys []string) map[string][]
 	var mu sync.Mutex
 	err := doWithBatch(ctx, len(keys), c.config.GetMultiBatchSize, c.getMultiGate, func(startIndex, endIndex int) error {
 		currentKeys := keys[startIndex:endIndex]
-		resp, err := c.MGet(ctx, currentKeys...).Result()
+		resp, err := c.Client.MGet(ctx, currentKeys...).Result()
 		if err != nil {
 			level.Warn(c.logger).Log("msg", "failed to mget items from redis", "err", err, "items", len(resp))
 			return nil
@@ -304,7 +308,7 @@ func (c *RedisClient) GetMulti(ctx context.Context, keys []string) map[string][]
 
 // Stop implement RemoteCacheClient.
 func (c *RedisClient) Stop() {
-	if err := c.Close(); err != nil {
+	if err := c.Client.Close(); err != nil {
 		level.Error(c.logger).Log("msg", "redis close err")
 	}
 }
