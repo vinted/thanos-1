@@ -161,6 +161,7 @@ func NewCacheConfig(logger log.Logger, confContentYaml []byte) (*cortexcache.Con
 		return &cortexcache.Config{
 			Redis: cortexcache.RedisConfig{
 				Endpoint:    config.Redis.Addr,
+				MasterName:  config.Redis.MasterName,
 				Timeout:     config.Redis.ReadTimeout,
 				Expiration:  config.Expiration,
 				DB:          config.Redis.DB,
