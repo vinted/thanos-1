@@ -85,9 +85,23 @@ func NewPrometheusStore(
 	timestamps func() (mint int64, maxt int64),
 	promVersion func() string,
 	limitMaxMatchedSeries int,
+	useCompressedXOR bool,
 ) (*PrometheusStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
+	}
+	var acceptableResponses []prompb.ReadRequest_ResponseType
+	if useCompressedXOR {
+		acceptableResponses = []prompb.ReadRequest_ResponseType{
+			prompb.ReadRequest_COMPACT_XOR_CHUNKS,
+			prompb.ReadRequest_STREAMED_XOR_CHUNKS,
+			prompb.ReadRequest_SAMPLES,
+		}
+	} else {
+		acceptableResponses = []prompb.ReadRequest_ResponseType{
+			prompb.ReadRequest_STREAMED_XOR_CHUNKS,
+			prompb.ReadRequest_SAMPLES,
+		}
 	}
 	p := &PrometheusStore{
 		logger:                        logger,
@@ -97,7 +111,7 @@ func NewPrometheusStore(
 		externalLabelsFn:              externalLabelsFn,
 		promVersion:                   promVersion,
 		timestamps:                    timestamps,
-		remoteReadAcceptableResponses: []prompb.ReadRequest_ResponseType{prompb.ReadRequest_STREAMED_XOR_CHUNKS, prompb.ReadRequest_SAMPLES},
+		remoteReadAcceptableResponses: acceptableResponses,
 		buffers: sync.Pool{New: func() interface{} {
 			b := make([]byte, 0, initialBufSize)
 			return &b
@@ -297,6 +311,10 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 		return p.handleSampledPrometheusResponse(s, httpResp, queryPrometheusSpan, extLset, enableChunkHashCalculation)
 	}
 
+	if contentType == "application/x-compact-protobuf; proto=prometheus.ChunkedReadResponse" {
+		return p.handleCompactPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, extLset, enableChunkHashCalculation)
+	}
+
 	if !strings.HasPrefix(contentType, "application/x-streamed-protobuf; proto=prometheus.ChunkedReadResponse") {
 		return errors.Errorf("not supported remote read content type: %s", contentType)
 	}
@@ -423,6 +441,101 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(
 	span.SetTag("series_count", seriesCount)
 
 	level.Debug(p.logger).Log("msg", "handled ReadRequest_SAMPLED request.", "series", seriesCount)
+	return nil
+}
+
+func (p *PrometheusStore) handleCompactPrometheusResponse(
+	s storepb.Store_SeriesServer,
+	shardMatcher *storepb.ShardMatcher,
+	httpResp *http.Response,
+	querySpan tracing.Span,
+	extLset labels.Labels,
+	calculateChecksums bool,
+) error {
+	level.Debug(p.logger).Log("msg", "started handling COMPACT streamed read response.")
+
+	framesNum := 0
+
+	defer func() {
+		p.framesRead.Observe(float64(framesNum))
+		querySpan.SetTag("frames", framesNum)
+		querySpan.Finish()
+	}()
+	defer runutil.CloseWithLogOnErr(p.logger, httpResp.Body, "prom series request body")
+
+	var data = p.getBuffer()
+	defer p.putBuffer(data)
+
+	bodySizer := NewBytesRead(httpResp.Body)
+	seriesStats := &storepb.SeriesStatsCounter{}
+
+	// TODO(bwplotka): Put read limit as a flag.
+	stream := remote.NewChunkedReader(bodySizer, remote.DefaultChunkedReadLimit, *data)
+	hasher := hashPool.Get().(hash.Hash64)
+	defer hashPool.Put(hasher)
+	for {
+		res := &prompb.ChunkedReadResponse{}
+		err := stream.NextProto(res)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return errors.Wrap(err, "next proto")
+		}
+
+		if len(res.ChunkedSeries) != 1 {
+			level.Warn(p.logger).Log("msg", "Prometheus ReadRequest_STREAMED_XOR_CHUNKS returned non 1 series in frame", "series", len(res.ChunkedSeries))
+		}
+
+		framesNum++
+		for _, series := range res.ChunkedSeries {
+			completeLabelset := labelpb.ExtendSortedLabels(labelpb.ZLabelsToPromLabels(series.Labels), extLset)
+			if !shardMatcher.MatchesLabels(completeLabelset) {
+				continue
+			}
+
+			seriesStats.CountSeries(series.Labels)
+			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
+
+			for i, chk := range series.Chunks {
+				chkHash := hashChunk(hasher, chk.Data, calculateChecksums)
+				thanosChks[i] = storepb.AggrChunk{
+					MaxTime: chk.MaxTimeMs,
+					MinTime: chk.MinTimeMs,
+					Raw: &storepb.Chunk{
+						Data: chk.Data,
+						// Prometheus ChunkEncoding vs ours https://github.com/thanos-io/thanos/blob/master/pkg/store/storepb/types.proto#L19
+						// has one difference. Prometheus has Chunk_UNKNOWN Chunk_Encoding = 0 vs we start from
+						// XOR as 0. Compensate for that here:
+						Type: storepb.Chunk_Encoding(chk.Type - 1),
+						Hash: chkHash,
+					},
+				}
+				seriesStats.Samples += thanosChks[i].Raw.XORNumSamples()
+				seriesStats.Chunks++
+
+				// Drop the reference to data from non protobuf for GC.
+				series.Chunks[i].Data = nil
+			}
+
+			r := storepb.NewSeriesResponse(&storepb.Series{
+				Labels: labelpb.ZLabelsFromPromLabels(
+					completeLabelset,
+				),
+				Chunks: thanosChks,
+			})
+			if err := s.Send(r); err != nil {
+				return err
+			}
+		}
+	}
+
+	querySpan.SetTag("processed.series", seriesStats.Series)
+	querySpan.SetTag("processed.chunks", seriesStats.Chunks)
+	querySpan.SetTag("processed.samples", seriesStats.Samples)
+	querySpan.SetTag("processed.bytes", bodySizer.BytesCount())
+	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum)
+
 	return nil
 }
 
