@@ -67,7 +67,7 @@ func testPrometheusStoreSeriesE2e(t *testing.T, prefix string) {
 	limitMinT := int64(0)
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return limitMinT, -1 }, nil, 0) // Maxt does not matter.
+		func() (int64, int64) { return limitMinT, -1 }, nil, 0, false) // Maxt does not matter.
 	testutil.Ok(t, err)
 
 	// Query all three samples except for the first one. Since we round up queried data
@@ -194,7 +194,7 @@ func TestPrometheusStore_SeriesLabels_e2e(t *testing.T) {
 
 	promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil, 0)
+		func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil, 0, false)
 	testutil.Ok(t, err)
 
 	for _, tcase := range []struct {
@@ -364,7 +364,7 @@ func TestPrometheusStore_LabelAPIs(t *testing.T) {
 
 		promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar, func() labels.Labels {
 			return extLset
-		}, nil, func() string { return version }, 0)
+		}, nil, func() string { return version }, 0, false)
 		testutil.Ok(t, err)
 
 		return promStore
@@ -399,7 +399,7 @@ func TestPrometheusStore_Series_MatchExternalLabel(t *testing.T) {
 
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
+		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0, false)
 	testutil.Ok(t, err)
 	srv := newStoreSeriesServer(ctx)
 
@@ -556,7 +556,7 @@ func TestPrometheusStore_Series_ChunkHashCalculation_Integration(t *testing.T) {
 
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
+		func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0, false)
 	testutil.Ok(t, err)
 	srv := newStoreSeriesServer(ctx)
 
@@ -585,7 +585,7 @@ func TestPrometheusStore_Info(t *testing.T) {
 
 	proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), nil, component.Sidecar,
 		func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-		func() (int64, int64) { return 123, 456 }, nil, 0)
+		func() (int64, int64) { return 123, 456 }, nil, 0, false)
 	testutil.Ok(t, err)
 
 	resp, err := proxy.Info(ctx, &storepb.InfoRequest{})
@@ -663,7 +663,7 @@ func TestPrometheusStore_Series_SplitSamplesIntoChunksWithMaxSizeOf120(t *testin
 
 		proxy, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 			func() labels.Labels { return labels.FromStrings("region", "eu-west") },
-			func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0)
+			func() (int64, int64) { return 0, math.MaxInt64 }, nil, 0, false)
 		testutil.Ok(t, err)
 
 		// We build chunks only for SAMPLES method. Make sure we ask for SAMPLES only.
