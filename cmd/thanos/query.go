@@ -45,6 +45,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/logging"
 	"github.com/thanos-io/thanos/pkg/metadata"
+	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/prober"
 	"github.com/thanos-io/thanos/pkg/query"
 	"github.com/thanos-io/thanos/pkg/rules"
@@ -78,6 +79,8 @@ func registerQuery(app *extkingpin.App) {
 
 	httpBindAddr, httpGracePeriod, httpTLSConfig := extkingpin.RegisterHTTPFlags(cmd)
 	grpcBindAddr, grpcGracePeriod, grpcCert, grpcKey, grpcClientCA, grpcMaxConnAge := extkingpin.RegisterGRPCFlags(cmd)
+
+	selectCacheSize := cmd.Flag("grpc-select-cache-size", "How many bytes should be allocated for storing Select() results in memory for each StoreAPI").Default("0").Bytes()
 
 	secure := cmd.Flag("grpc-client-tls-secure", "Use TLS when talking to the gRPC server").Default("false").Bool()
 	skipVerify := cmd.Flag("grpc-client-tls-skip-verify", "Disable TLS certificate verification i.e self signed, signed by fake CA").Default("false").Bool()
@@ -319,6 +322,7 @@ func registerQuery(app *extkingpin.App) {
 			*queryTelemetrySamplesQuantiles,
 			*queryTelemetrySeriesQuantiles,
 			promqlEngineType(*promqlEngine),
+			uint64(*selectCacheSize),
 		)
 	})
 }
@@ -395,6 +399,7 @@ func runQuery(
 	queryTelemetrySamplesQuantiles []int64,
 	queryTelemetrySeriesQuantiles []int64,
 	promqlEngine promqlEngineType,
+	selectCacheSize uint64,
 ) error {
 	if alertQueryURL == "" {
 		lastColon := strings.LastIndex(httpBindAddr, ":")
@@ -409,7 +414,7 @@ func runQuery(
 		Help: "The number of times a duplicated store addresses is detected from the different configs in query",
 	})
 
-	dialOpts, err := extgrpc.StoreClientGRPCOpts(logger, reg, tracer, secure, skipVerify, cert, key, caCert, serverName)
+	dialOpts, err := extgrpc.StoreClientGRPCOpts(logger, reg, tracer, secure, skipVerify, cert, key, caCert, serverName, model.Bytes(selectCacheSize))
 	if err != nil {
 		return errors.Wrap(err, "building gRPC client")
 	}
