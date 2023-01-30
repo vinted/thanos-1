@@ -109,6 +109,9 @@ func registerQuery(app *extkingpin.App) {
 	maxConcurrentSelects := cmd.Flag("query.max-concurrent-select", "Maximum number of select requests made concurrently per a query.").
 		Default("4").Int()
 
+	maxConcurrentDecompressWorkers := cmd.Flag("query.max-concurrent-decompress-workers", "Maximum number of workers spawned to decompress a set of compressed storepb.Series.").
+		Default("40").Int()
+
 	queryConnMetricLabels := cmd.Flag("query.conn-metric.label", "Optional selection of query connection metric labels to be collected from endpoint set").
 		Default(string(query.ExternalLabels), string(query.StoreType)).
 		Enums(string(query.ExternalLabels), string(query.StoreType))
@@ -319,6 +322,7 @@ func registerQuery(app *extkingpin.App) {
 			*queryTelemetrySamplesQuantiles,
 			*queryTelemetrySeriesQuantiles,
 			promqlEngineType(*promqlEngine),
+			*maxConcurrentDecompressWorkers,
 		)
 	})
 }
@@ -395,6 +399,7 @@ func runQuery(
 	queryTelemetrySamplesQuantiles []int64,
 	queryTelemetrySeriesQuantiles []int64,
 	promqlEngine promqlEngineType,
+	maxConcurrentDecompressWorkers int,
 ) error {
 	if alertQueryURL == "" {
 		lastColon := strings.LastIndex(httpBindAddr, ":")
@@ -516,6 +521,7 @@ func runQuery(
 			proxy,
 			maxConcurrentSelects,
 			queryTimeout,
+			maxConcurrentDecompressWorkers,
 		)
 	)
 
