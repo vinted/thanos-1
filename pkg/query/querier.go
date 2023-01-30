@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	promgate "github.com/prometheus/prometheus/util/gate"
 
 	"github.com/thanos-io/thanos/pkg/dedup"
@@ -70,6 +71,7 @@ func NewQueryableCreator(
 	proxy storepb.StoreServer,
 	maxConcurrentSelects int,
 	selectTimeout time.Duration,
+	maxConcurrentDecompressWorkers int,
 ) QueryableCreator {
 	duration := promauto.With(
 		extprom.WrapRegistererWithPrefix("concurrent_selects_", reg),
@@ -98,54 +100,57 @@ func NewQueryableCreator(
 			gateProviderFn: func() gate.Gate {
 				return gate.InstrumentGateDuration(duration, promgate.New(maxConcurrentSelects))
 			},
-			maxConcurrentSelects: maxConcurrentSelects,
-			selectTimeout:        selectTimeout,
-			enableQueryPushdown:  enableQueryPushdown,
-			shardInfo:            shardInfo,
-			seriesStatsReporter:  seriesStatsReporter,
+			maxConcurrentSelects:           maxConcurrentSelects,
+			selectTimeout:                  selectTimeout,
+			enableQueryPushdown:            enableQueryPushdown,
+			shardInfo:                      shardInfo,
+			seriesStatsReporter:            seriesStatsReporter,
+			maxConcurrentDecompressWorkers: maxConcurrentDecompressWorkers,
 		}
 	}
 }
 
 type queryable struct {
-	logger               log.Logger
-	replicaLabels        []string
-	storeDebugMatchers   [][]*labels.Matcher
-	proxy                storepb.StoreServer
-	deduplicate          bool
-	maxResolutionMillis  int64
-	partialResponse      bool
-	skipChunks           bool
-	gateProviderFn       func() gate.Gate
-	maxConcurrentSelects int
-	selectTimeout        time.Duration
-	enableQueryPushdown  bool
-	shardInfo            *storepb.ShardInfo
-	seriesStatsReporter  seriesStatsReporter
+	logger                         log.Logger
+	replicaLabels                  []string
+	storeDebugMatchers             [][]*labels.Matcher
+	proxy                          storepb.StoreServer
+	deduplicate                    bool
+	maxResolutionMillis            int64
+	partialResponse                bool
+	skipChunks                     bool
+	gateProviderFn                 func() gate.Gate
+	maxConcurrentSelects           int
+	selectTimeout                  time.Duration
+	enableQueryPushdown            bool
+	shardInfo                      *storepb.ShardInfo
+	seriesStatsReporter            seriesStatsReporter
+	maxConcurrentDecompressWorkers int
 }
 
 // Querier returns a new storage querier against the underlying proxy store API.
 func (q *queryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return newQuerier(ctx, q.logger, mint, maxt, q.replicaLabels, q.storeDebugMatchers, q.proxy, q.deduplicate, q.maxResolutionMillis, q.partialResponse, q.enableQueryPushdown, q.skipChunks, q.gateProviderFn(), q.selectTimeout, q.shardInfo, q.seriesStatsReporter), nil
+	return newQuerier(ctx, q.logger, mint, maxt, q.replicaLabels, q.storeDebugMatchers, q.proxy, q.deduplicate, q.maxResolutionMillis, q.partialResponse, q.enableQueryPushdown, q.skipChunks, q.gateProviderFn(), q.selectTimeout, q.shardInfo, q.seriesStatsReporter, maxConcurrentDecompressWorkers), nil
 }
 
 type querier struct {
-	ctx                 context.Context
-	logger              log.Logger
-	cancel              func()
-	mint, maxt          int64
-	replicaLabels       map[string]struct{}
-	storeDebugMatchers  [][]*labels.Matcher
-	proxy               storepb.StoreServer
-	deduplicate         bool
-	maxResolutionMillis int64
-	partialResponse     bool
-	enableQueryPushdown bool
-	skipChunks          bool
-	selectGate          gate.Gate
-	selectTimeout       time.Duration
-	shardInfo           *storepb.ShardInfo
-	seriesStatsReporter seriesStatsReporter
+	ctx                            context.Context
+	logger                         log.Logger
+	cancel                         func()
+	mint, maxt                     int64
+	replicaLabels                  map[string]struct{}
+	storeDebugMatchers             [][]*labels.Matcher
+	proxy                          storepb.StoreServer
+	deduplicate                    bool
+	maxResolutionMillis            int64
+	partialResponse                bool
+	enableQueryPushdown            bool
+	skipChunks                     bool
+	selectGate                     gate.Gate
+	selectTimeout                  time.Duration
+	shardInfo                      *storepb.ShardInfo
+	seriesStatsReporter            seriesStatsReporter
+	maxConcurrentDecompressWorkers int
 }
 
 // newQuerier creates implementation of storage.Querier that fetches data from the proxy
@@ -167,6 +172,7 @@ func newQuerier(
 	selectTimeout time.Duration,
 	shardInfo *storepb.ShardInfo,
 	seriesStatsReporter seriesStatsReporter,
+	maxConcurrentDecompressWorkers int,
 ) *querier {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -184,18 +190,19 @@ func newQuerier(
 		selectGate:    selectGate,
 		selectTimeout: selectTimeout,
 
-		mint:                mint,
-		maxt:                maxt,
-		replicaLabels:       rl,
-		storeDebugMatchers:  storeDebugMatchers,
-		proxy:               proxy,
-		deduplicate:         deduplicate,
-		maxResolutionMillis: maxResolutionMillis,
-		partialResponse:     partialResponse,
-		skipChunks:          skipChunks,
-		enableQueryPushdown: enableQueryPushdown,
-		shardInfo:           shardInfo,
-		seriesStatsReporter: seriesStatsReporter,
+		mint:                           mint,
+		maxt:                           maxt,
+		replicaLabels:                  rl,
+		storeDebugMatchers:             storeDebugMatchers,
+		proxy:                          proxy,
+		deduplicate:                    deduplicate,
+		maxResolutionMillis:            maxResolutionMillis,
+		partialResponse:                partialResponse,
+		skipChunks:                     skipChunks,
+		enableQueryPushdown:            enableQueryPushdown,
+		shardInfo:                      shardInfo,
+		seriesStatsReporter:            seriesStatsReporter,
+		maxConcurrentDecompressWorkers: maxConcurrentDecompressWorkers,
 	}
 }
 
@@ -216,42 +223,112 @@ type seriesServer struct {
 	compressedSeriesSet []storepb.CompressedSeries
 }
 
-func (s *seriesServer) DecompressSeries() error {
-	for _, cs := range s.compressedSeriesSet {
-		newSeries := &storepb.Series{
-			Chunks: cs.Chunks,
-		}
-
-		lbls := labels.Labels{}
-
-		for _, cLabel := range cs.Labels {
-			var name, val string
-			for _, symTable := range s.symbolTables {
-				if foundName, ok := symTable[uint64(cLabel.NameRef)]; ok {
-					name = foundName
-				}
-
-				if foundValue, ok := symTable[uint64(cLabel.ValueRef)]; ok {
-					val = foundValue
-				}
-			}
-			if name == "" {
-				return fmt.Errorf("found no reference for name ref %d", cLabel.NameRef)
-			}
-			if val == "" {
-				return fmt.Errorf("found no reference for value ref %d", cLabel.ValueRef)
-			}
-
-			lbls = append(lbls, labels.Label{
-				Name:  name,
-				Value: val,
-			})
-		}
-
-		newSeries.Labels = labelpb.ZLabelsFromPromLabels(lbls)
-		s.seriesSet = append(s.seriesSet, *newSeries)
+func (s *seriesServer) decompressSeriesIndex(i int) (*storepb.Series, error) {
+	newSeries := &storepb.Series{
+		Chunks: s.compressedSeriesSet[i].Chunks,
 	}
-	return nil
+
+	lbls := make(labels.Labels, 0, len(s.compressedSeriesSet[i].Labels))
+
+	for _, cLabel := range s.compressedSeriesSet[i].Labels {
+		var name, val string
+		for _, symTable := range s.symbolTables {
+			if foundName, ok := symTable[uint64(cLabel.NameRef)]; ok {
+				name = foundName
+			}
+
+			if foundValue, ok := symTable[uint64(cLabel.ValueRef)]; ok {
+				val = foundValue
+			}
+
+			if name != "" && val != "" {
+				break
+			}
+		}
+		if name == "" || val == "" {
+			return nil, fmt.Errorf("series %+v references do not exist", cLabel)
+		}
+
+		lbls = append(lbls, labels.Label{
+			Name:  name,
+			Value: val,
+		})
+	}
+
+	newSeries.Labels = labelpb.ZLabelsFromPromLabels(lbls)
+	return newSeries, nil
+}
+
+func (s *seriesServer) DecompressSeries(maxWorkers int) error {
+	workerInput := make(chan int)
+	workerOutput := make(chan *storepb.Series)
+
+	var elements uint64
+	for _, css := range s.compressedSeriesSet {
+		elements += uint64(len(css.Labels)) * 2
+	}
+
+	newSeriesSet := make([]storepb.Series, 0, len(s.seriesSet)+len(s.compressedSeriesSet))
+	copy(newSeriesSet, s.seriesSet)
+
+	// NOTE(GiedriusS): Ballpark estimate. With more workers I got slower results.
+	workerCount := 1 + (elements / 2000000)
+	if workerCount == 1 {
+		for i := range s.compressedSeriesSet {
+			decompressedSeries, err := s.decompressSeriesIndex(i)
+			if err != nil {
+				return fmt.Errorf("decompressing element %d: %w", i, err)
+			}
+
+			newSeriesSet = append(newSeriesSet, *decompressedSeries)
+		}
+		s.seriesSet = newSeriesSet
+		return nil
+	}
+
+	if maxWorkers > 0 && workerCount > uint64(maxWorkers) {
+		workerCount = uint64(maxWorkers)
+	}
+
+	wg := &sync.WaitGroup{}
+	errLock := sync.Mutex{}
+	errs := tsdb_errors.NewMulti()
+
+	for i := uint64(0); i < workerCount; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for ind := range workerInput {
+				decompressedSeries, err := s.decompressSeriesIndex(ind)
+				if err != nil {
+					errLock.Lock()
+					errs.Add(fmt.Errorf("decompressing element %d: %w", ind, err))
+					errLock.Unlock()
+					return
+				}
+
+				workerOutput <- decompressedSeries
+			}
+		}()
+	}
+
+	go func() {
+		for i := range s.compressedSeriesSet {
+			workerInput <- i
+		}
+
+		close(workerInput)
+		wg.Wait()
+		close(workerOutput)
+	}()
+
+	for wo := range workerOutput {
+		newSeriesSet = append(newSeriesSet, *wo)
+	}
+	s.seriesSet = newSeriesSet
+
+	return errs.Err()
 }
 
 func (s *seriesServer) Send(r *storepb.SeriesResponse) error {
@@ -431,7 +508,7 @@ func (q *querier) selectFn(ctx context.Context, hints *storage.SelectHints, ms .
 		warns = append(warns, errors.New(w))
 	}
 
-	if err := resp.DecompressSeries(); err != nil {
+	if err := resp.DecompressSeries(q.maxConcurrentDecompressWorkers); err != nil {
 		return nil, storepb.SeriesStatsCounter{}, errors.Wrap(err, "decompressing series")
 	}
 
