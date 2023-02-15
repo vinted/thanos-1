@@ -259,7 +259,7 @@ func (s *seriesServer) decompressSeriesIndex(i int) (*storepb.Series, error) {
 	return newSeries, nil
 }
 
-func (s *seriesServer) DecompressSeries(maxWorkers int) error {
+func (s *seriesServer) DecompressSeries(ctx context.Context, maxWorkers int) error {
 	workerInput := make(chan int)
 	workerOutput := make(chan *storepb.Series)
 
@@ -305,7 +305,7 @@ func (s *seriesServer) DecompressSeries(maxWorkers int) error {
 					errLock.Lock()
 					errs.Add(fmt.Errorf("decompressing element %d: %w", ind, err))
 					errLock.Unlock()
-					return
+					continue
 				}
 
 				workerOutput <- decompressedSeries
@@ -316,6 +316,12 @@ func (s *seriesServer) DecompressSeries(maxWorkers int) error {
 	go func() {
 		for i := range s.compressedSeriesSet {
 			workerInput <- i
+			if ctx.Err() != nil {
+				errLock.Lock()
+				errs.Add(ctx.Err())
+				errLock.Unlock()
+				break
+			}
 		}
 
 		close(workerInput)
@@ -508,7 +514,7 @@ func (q *querier) selectFn(ctx context.Context, hints *storage.SelectHints, ms .
 		warns = append(warns, errors.New(w))
 	}
 
-	if err := resp.DecompressSeries(q.maxConcurrentDecompressWorkers); err != nil {
+	if err := resp.DecompressSeries(ctx, q.maxConcurrentDecompressWorkers); err != nil {
 		return nil, storepb.SeriesStatsCounter{}, errors.Wrap(err, "decompressing series")
 	}
 
