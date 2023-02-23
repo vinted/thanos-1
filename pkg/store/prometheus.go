@@ -299,7 +299,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	}
 
 	if contentType == "application/x-compact-protobuf; proto=prometheus.ChunkedReadResponse" {
-		return p.handleCompactPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, extLset, enableChunkHashCalculation)
+		return p.handleCompactPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
 	}
 
 	if !strings.HasPrefix(contentType, "application/x-streamed-protobuf; proto=prometheus.ChunkedReadResponse") {
@@ -440,8 +440,8 @@ func (p *PrometheusStore) handleCompactPrometheusResponse(
 	shardMatcher *storepb.ShardMatcher,
 	httpResp *http.Response,
 	querySpan tracing.Span,
-	extLset labels.Labels,
 	calculateChecksums bool,
+	extLsetToRemove map[string]struct{},
 ) error {
 	level.Debug(p.logger).Log("msg", "started handling COMPACT streamed read response.")
 
@@ -480,12 +480,12 @@ func (p *PrometheusStore) handleCompactPrometheusResponse(
 
 		framesNum++
 		for _, series := range res.ChunkedSeries {
-			completeLabelset := labelpb.ExtendSortedLabels(labelpb.ZLabelsToPromLabels(series.Labels), extLset)
+			completeLabelset := rmLabels(labelpb.ZLabelsToPromLabels(series.Labels), extLsetToRemove)
 			if !shardMatcher.MatchesLabels(completeLabelset) {
 				continue
 			}
 
-			seriesStats.CountSeries(series.Labels)
+			seriesStats.CountSeries(labelpb.HashWithPrefix("", series.Labels))
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 
 			for i, chk := range series.Chunks {
