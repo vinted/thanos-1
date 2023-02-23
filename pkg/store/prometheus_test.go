@@ -511,7 +511,7 @@ func TestPrometheusStore_Series_LimitMaxMatchedSeries(t *testing.T) {
 			promStore, err := NewPrometheusStore(nil, nil, promclient.NewDefaultClient(), u, component.Sidecar,
 				func() labels.Labels { return labels.FromStrings("region", "eu-west") },
 				func() (int64, int64) { return math.MinInt64/1000 + 62135596801, math.MaxInt64/1000 - 62135596801 }, nil,
-				tcase.limitMaxMatchedSeries)
+				tcase.limitMaxMatchedSeries, false)
 			testutil.Ok(t, err)
 
 			srv := newStoreSeriesServer(ctx)

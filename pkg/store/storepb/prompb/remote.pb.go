@@ -44,7 +44,6 @@ const (
 	// Response headers:
 	// Content-Type: "application/x-compact-protobuf; proto=prometheus.ChunkedReadResponse"
 	// Content-Encoding: ""
-	// It is the same as the previous one but as much as possible data is pushed into one frame.
 	ReadRequest_COMPACT_XOR_CHUNKS ReadRequest_ResponseType = 2
 )
 
