@@ -37,9 +37,10 @@ func TestQuerier_Proxy(t *testing.T) {
 			logger,
 			nil,
 			store.NewProxyStore(logger, nil, func() []store.Client { return clients },
-				component.Debug, nil, 5*time.Minute, store.EagerRetrieval),
+				component.Debug, nil, 5*time.Minute, store.EagerRetrieval, false),
 			1000000,
 			5*time.Minute,
+			0,
 		)
 
 		createQueryableFn := func(stores []*testStore) storage.Queryable {
