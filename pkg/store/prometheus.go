@@ -23,6 +23,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/types"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,6 +36,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/httpconfig"
 	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/store/storepb/prompb"
@@ -57,7 +59,12 @@ type PrometheusStore struct {
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 
 	framesRead prometheus.Histogram
+
+	limitMaxMatchedSeries int
 }
+
+// ErrSeriesMatchLimitReached is an error returned by PrometheusStore when matched series limit is enabled and matched series count exceeds the limit.
+var ErrSeriesMatchLimitReached = errors.New("series match limit reached")
 
 // Label{Values,Names} call with matchers is supported for Prometheus versions >= 2.24.0.
 // https://github.com/prometheus/prometheus/commit/caa173d2aac4c390546b1f78302104b1ccae0878.
@@ -77,9 +84,24 @@ func NewPrometheusStore(
 	externalLabelsFn func() labels.Labels,
 	timestamps func() (mint int64, maxt int64),
 	promVersion func() string,
+	limitMaxMatchedSeries int,
+	useCompressedXOR bool,
 ) (*PrometheusStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
+	}
+	var acceptableResponses []prompb.ReadRequest_ResponseType
+	if useCompressedXOR {
+		acceptableResponses = []prompb.ReadRequest_ResponseType{
+			prompb.ReadRequest_COMPACT_XOR_CHUNKS,
+			prompb.ReadRequest_STREAMED_XOR_CHUNKS,
+			prompb.ReadRequest_SAMPLES,
+		}
+	} else {
+		acceptableResponses = []prompb.ReadRequest_ResponseType{
+			prompb.ReadRequest_STREAMED_XOR_CHUNKS,
+			prompb.ReadRequest_SAMPLES,
+		}
 	}
 	p := &PrometheusStore{
 		logger:                        logger,
@@ -89,7 +111,7 @@ func NewPrometheusStore(
 		externalLabelsFn:              externalLabelsFn,
 		promVersion:                   promVersion,
 		timestamps:                    timestamps,
-		remoteReadAcceptableResponses: []prompb.ReadRequest_ResponseType{prompb.ReadRequest_STREAMED_XOR_CHUNKS, prompb.ReadRequest_SAMPLES},
+		remoteReadAcceptableResponses: acceptableResponses,
 		buffers: sync.Pool{New: func() interface{} {
 			b := make([]byte, 0, initialBufSize)
 			return &b
@@ -101,6 +123,7 @@ func NewPrometheusStore(
 				Buckets: prometheus.ExponentialBuckets(10, 10, 5),
 			},
 		),
+		limitMaxMatchedSeries: limitMaxMatchedSeries,
 	}
 	return p, nil
 }
@@ -140,6 +163,10 @@ func (p *PrometheusStore) putBuffer(b *[]byte) {
 	p.buffers.Put(b)
 }
 
+type timerange struct {
+	mintime, maxtime int64
+}
+
 // Series returns all series for a requested time range and label matcher.
 func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_SeriesServer) error {
 	extLset := p.externalLabelsFn()
@@ -153,6 +180,17 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	}
 	if len(matchers) == 0 {
 		return status.Error(codes.InvalidArgument, "no matchers specified (excluding external labels)")
+	}
+
+	if p.limitMaxMatchedSeries > 0 {
+		matchedSeriesCount, err := p.client.SeriesMatchCount(s.Context(), p.base, matchers, r.MinTime, r.MaxTime)
+		if err != nil {
+			return errors.Wrap(err, "get series match count")
+		}
+
+		if matchedSeriesCount > p.limitMaxMatchedSeries {
+			return ErrSeriesMatchLimitReached
+		}
 	}
 
 	// Don't ask for more than available time. This includes potential `minTime` flag limit.
@@ -178,6 +216,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	for _, lbl := range r.WithoutReplicaLabels {
 		extLsetToRemove[lbl] = struct{}{}
 	}
+	symbolTableBuilder := newSymbolTableBuilder(r.MaximumStringSlots)
 
 	if r.SkipChunks {
 		finalExtLset := rmLabels(extLset.Copy(), extLsetToRemove)
@@ -194,7 +233,24 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 			sort.Slice(lset, func(i, j int) bool {
 				return lset[i].Name < lset[j].Name
 			})
+
 			if err = s.Send(storepb.NewSeriesResponse(&storepb.Series{Labels: lset})); err != nil {
+				return err
+			}
+		}
+
+		{
+			var anyHints *types.Any
+
+			resHints := &hintspb.SeriesResponseHints{StringSymbolTable: symbolTableBuilder.getTable()}
+
+			if anyHints, err = types.MarshalAny(resHints); err != nil {
+				err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
+				return err
+			}
+
+			if err = s.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
+				err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
 				return err
 			}
 		}
@@ -208,29 +264,46 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 		return p.queryPrometheus(s, r, extLsetToRemove)
 	}
 
-	q := &prompb.Query{StartTimestampMs: r.MinTime, EndTimestampMs: r.MaxTime}
-	for _, m := range matchers {
-		pm := &prompb.LabelMatcher{Name: m.Name, Value: m.Value}
-
-		switch m.Type {
-		case labels.MatchEqual:
-			pm.Type = prompb.LabelMatcher_EQ
-		case labels.MatchNotEqual:
-			pm.Type = prompb.LabelMatcher_NEQ
-		case labels.MatchRegexp:
-			pm.Type = prompb.LabelMatcher_RE
-		case labels.MatchNotRegexp:
-			pm.Type = prompb.LabelMatcher_NRE
-		default:
-			return errors.New("unrecognized matcher type")
+	timeranges := []timerange{}
+	if r.QueryHints != nil {
+		if r.QueryHints.Range.Millis != 0 && r.QueryHints.Range.Millis*4 < r.QueryHints.StepMillis {
+			for ts := r.MinTime; ts <= r.MaxTime; ts += r.QueryHints.StepMillis {
+				timeranges = append(timeranges, timerange{ts, ts + r.QueryHints.Range.Millis})
+			}
 		}
-		q.Matchers = append(q.Matchers, pm)
+	}
+
+	if len(timeranges) == 0 {
+		timeranges = []timerange{{r.MinTime, r.MaxTime}}
+	}
+
+	queries := []*prompb.Query{}
+	for _, tr := range timeranges {
+		q := &prompb.Query{StartTimestampMs: tr.mintime, EndTimestampMs: tr.maxtime}
+		for _, m := range matchers {
+			pm := &prompb.LabelMatcher{Name: m.Name, Value: m.Value}
+
+			switch m.Type {
+			case labels.MatchEqual:
+				pm.Type = prompb.LabelMatcher_EQ
+			case labels.MatchNotEqual:
+				pm.Type = prompb.LabelMatcher_NEQ
+			case labels.MatchRegexp:
+				pm.Type = prompb.LabelMatcher_RE
+			case labels.MatchNotRegexp:
+				pm.Type = prompb.LabelMatcher_NRE
+			default:
+				return errors.New("unrecognized matcher type")
+			}
+			q.Matchers = append(q.Matchers, pm)
+		}
+		queries = append(queries, q)
 	}
 
 	queryPrometheusSpan, ctx := tracing.StartSpan(s.Context(), "query_prometheus")
-	queryPrometheusSpan.SetTag("query.request", q.String())
+	queryPrometheusSpan.SetTag("query.request", queries[0].String())
 
-	httpResp, err := p.startPromRemoteRead(ctx, q)
+	httpResp, err := p.startPromRemoteRead(ctx, queries)
 	if err != nil {
 		queryPrometheusSpan.Finish()
 		return errors.Wrap(err, "query Prometheus")
@@ -243,10 +316,14 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 		return p.handleSampledPrometheusResponse(s, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
 	}
 
+	if contentType == "application/x-compact-protobuf; proto=prometheus.ChunkedReadResponse" {
+		return p.handleCompactPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
+	}
+
 	if !strings.HasPrefix(contentType, "application/x-streamed-protobuf; proto=prometheus.ChunkedReadResponse") {
 		return errors.Errorf("not supported remote read content type: %s", contentType)
 	}
-	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
+	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove, symbolTableBuilder)
 }
 
 func (p *PrometheusStore) queryPrometheus(
@@ -337,38 +414,137 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(
 
 	span, _ := tracing.StartSpan(s.Context(), "transform_and_respond")
 	defer span.Finish()
-	span.SetTag("series_count", len(resp.Results[0].Timeseries))
+	seriesCount := 0
 
-	for _, e := range resp.Results[0].Timeseries {
-		// Sampled remote read handler already adds external labels for us:
-		// https://github.com/prometheus/prometheus/blob/3f6f5d3357e232abe53f1775f893fdf8f842712c/storage/remote/read_handler.go#L166.
-		lset := rmLabels(labelpb.ZLabelsToPromLabels(e.Labels), extLsetToRemove)
-		if len(e.Samples) == 0 {
-			// As found in https://github.com/thanos-io/thanos/issues/381
-			// Prometheus can give us completely empty time series. Ignore these with log until we figure out that
-			// this is expected from Prometheus perspective.
-			level.Warn(p.logger).Log(
-				"msg",
-				"found timeseries without any chunk. See https://github.com/thanos-io/thanos/issues/381 for details",
-				"lset",
-				fmt.Sprintf("%v", lset),
-			)
-			continue
-		}
+	for _, r := range resp.Results {
+		for _, e := range r.Timeseries {
+			seriesCount++
+			lset := rmLabels(labelpb.ZLabelsToPromLabels(e.Labels), extLsetToRemove)
+			if len(e.Samples) == 0 {
+				// As found in https://github.com/thanos-io/thanos/issues/381
+				// Prometheus can give us completely empty time series. Ignore these with log until we figure out that
+				// this is expected from Prometheus perspective.
+				level.Warn(p.logger).Log(
+					"msg",
+					"found timeseries without any chunk. See https://github.com/thanos-io/thanos/issues/381 for details",
+					"lset",
+					fmt.Sprintf("%v", lset),
+				)
+				continue
+			}
 
-		aggregatedChunks, err := p.chunkSamples(e, MaxSamplesPerChunk, calculateChecksums)
-		if err != nil {
-			return err
-		}
+			aggregatedChunks, err := p.chunkSamples(e, MaxSamplesPerChunk, calculateChecksums)
+			if err != nil {
+				return err
+			}
 
-		if err := s.Send(storepb.NewSeriesResponse(&storepb.Series{
-			Labels: labelpb.ZLabelsFromPromLabels(lset),
-			Chunks: aggregatedChunks,
-		})); err != nil {
-			return err
+			if err := s.Send(storepb.NewSeriesResponse(&storepb.Series{
+				Labels: labelpb.ZLabelsFromPromLabels(lset),
+				Chunks: aggregatedChunks,
+			})); err != nil {
+				return err
+			}
 		}
 	}
-	level.Debug(p.logger).Log("msg", "handled ReadRequest_SAMPLED request.", "series", len(resp.Results[0].Timeseries))
+
+	span.SetTag("series_count", seriesCount)
+
+	level.Debug(p.logger).Log("msg", "handled ReadRequest_SAMPLED request.", "series", seriesCount)
+	return nil
+}
+
+func (p *PrometheusStore) handleCompactPrometheusResponse(
+	s storepb.Store_SeriesServer,
+	shardMatcher *storepb.ShardMatcher,
+	httpResp *http.Response,
+	querySpan tracing.Span,
+	calculateChecksums bool,
+	extLsetToRemove map[string]struct{},
+) error {
+	level.Debug(p.logger).Log("msg", "started handling COMPACT streamed read response.")
+
+	framesNum := 0
+
+	defer func() {
+		p.framesRead.Observe(float64(framesNum))
+		querySpan.SetTag("frames", framesNum)
+		querySpan.Finish()
+	}()
+	defer runutil.CloseWithLogOnErr(p.logger, httpResp.Body, "prom series request body")
+
+	var data = p.getBuffer()
+	defer p.putBuffer(data)
+
+	bodySizer := NewBytesRead(httpResp.Body)
+	seriesStats := &storepb.SeriesStatsCounter{}
+
+	// TODO(bwplotka): Put read limit as a flag.
+	stream := remote.NewChunkedReader(bodySizer, remote.DefaultChunkedReadLimit, *data)
+	hasher := hashPool.Get().(hash.Hash64)
+	defer hashPool.Put(hasher)
+	for {
+		res := &prompb.ChunkedReadResponse{}
+		err := stream.NextProto(res)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return errors.Wrap(err, "next proto")
+		}
+
+		if len(res.ChunkedSeries) != 1 {
+			level.Warn(p.logger).Log("msg", "Prometheus ReadRequest_STREAMED_XOR_CHUNKS returned non 1 series in frame", "series", len(res.ChunkedSeries))
+		}
+
+		framesNum++
+		for _, series := range res.ChunkedSeries {
+			completeLabelset := rmLabels(labelpb.ZLabelsToPromLabels(series.Labels), extLsetToRemove)
+			if !shardMatcher.MatchesLabels(completeLabelset) {
+				continue
+			}
+
+			seriesStats.CountSeries(labelpb.HashWithPrefix("", series.Labels))
+			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
+
+			for i, chk := range series.Chunks {
+				chkHash := hashChunk(hasher, chk.Data, calculateChecksums)
+				thanosChks[i] = storepb.AggrChunk{
+					MaxTime: chk.MaxTimeMs,
+					MinTime: chk.MinTimeMs,
+					Raw: &storepb.Chunk{
+						Data: chk.Data,
+						// Prometheus ChunkEncoding vs ours https://github.com/thanos-io/thanos/blob/master/pkg/store/storepb/types.proto#L19
+						// has one difference. Prometheus has Chunk_UNKNOWN Chunk_Encoding = 0 vs we start from
+						// XOR as 0. Compensate for that here:
+						Type: storepb.Chunk_Encoding(chk.Type - 1),
+						Hash: chkHash,
+					},
+				}
+				seriesStats.Samples += thanosChks[i].Raw.XORNumSamples()
+				seriesStats.Chunks++
+
+				// Drop the reference to data from non protobuf for GC.
+				series.Chunks[i].Data = nil
+			}
+
+			r := storepb.NewSeriesResponse(&storepb.Series{
+				Labels: labelpb.ZLabelsFromPromLabels(
+					completeLabelset,
+				),
+				Chunks: thanosChks,
+			})
+			if err := s.Send(r); err != nil {
+				return err
+			}
+		}
+	}
+
+	querySpan.SetTag("processed.series", seriesStats.Series)
+	querySpan.SetTag("processed.chunks", seriesStats.Chunks)
+	querySpan.SetTag("processed.samples", seriesStats.Samples)
+	querySpan.SetTag("processed.bytes", bodySizer.BytesCount())
+	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum)
+
 	return nil
 }
 
@@ -379,6 +555,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 	querySpan tracing.Span,
 	calculateChecksums bool,
 	extLsetToRemove map[string]struct{},
+	lookupTable *symbolTableBuilder,
 ) error {
 	level.Debug(p.logger).Log("msg", "started handling ReadRequest_STREAMED_XOR_CHUNKS streamed read response.")
 
@@ -425,7 +602,24 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 				continue
 			}
 
-			seriesStats.CountSeries(series.Labels)
+			compressedLabels := make([]labelpb.CompressedLabel, 0, len(completeLabelset))
+			var compressedResponse bool = true
+			for _, lbl := range completeLabelset {
+				nameRef, nok := lookupTable.getOrStoreString(lbl.Name)
+				valueRef, vok := lookupTable.getOrStoreString(lbl.Value)
+
+				if !nok || !vok {
+					compressedResponse = false
+					break
+				} else if compressedResponse && nok && vok {
+					compressedLabels = append(compressedLabels, labelpb.CompressedLabel{
+						NameRef:  nameRef,
+						ValueRef: valueRef,
+					})
+				}
+			}
+
+			seriesStats.CountSeries(labelpb.HashWithPrefix("", series.Labels))
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 
 			for i, chk := range series.Chunks {
@@ -449,15 +643,40 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 				series.Chunks[i].Data = nil
 			}
 
-			r := storepb.NewSeriesResponse(&storepb.Series{
-				Labels: labelpb.ZLabelsFromPromLabels(
-					completeLabelset,
-				),
-				Chunks: thanosChks,
-			})
+			var r *storepb.SeriesResponse
+
+			if compressedResponse {
+				r = storepb.NewCompressedSeriesResponse(&storepb.CompressedSeries{
+					Chunks: thanosChks,
+					Labels: compressedLabels,
+				})
+			} else {
+				r = storepb.NewSeriesResponse(&storepb.Series{
+					Labels: labelpb.ZLabelsFromPromLabels(completeLabelset),
+					Chunks: thanosChks,
+				})
+			}
+
 			if err := s.Send(r); err != nil {
 				return err
 			}
+		}
+	}
+
+	{
+		var anyHints *types.Any
+		var err error
+
+		resHints := &hintspb.SeriesResponseHints{StringSymbolTable: lookupTable.getTable()}
+
+		if anyHints, err = types.MarshalAny(resHints); err != nil {
+			err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
+			return err
+		}
+
+		if err = s.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
+			err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
+			return err
 		}
 	}
 
@@ -552,9 +771,9 @@ func (p *PrometheusStore) chunkSamples(series *prompb.TimeSeries, maxSamplesPerC
 	return chks, nil
 }
 
-func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, q *prompb.Query) (presp *http.Response, err error) {
+func (p *PrometheusStore) startPromRemoteRead(ctx context.Context, queries []*prompb.Query) (presp *http.Response, err error) {
 	reqb, err := proto.Marshal(&prompb.ReadRequest{
-		Queries:               []*prompb.Query{q},
+		Queries:               queries,
 		AcceptedResponseTypes: p.remoteReadAcceptableResponses,
 	})
 	if err != nil {

@@ -1393,6 +1393,9 @@ func benchBucketSeries(t testutil.TB, sampleType chunkenc.ValueType, skipChunk b
 			},
 			// This does not cut chunks properly, but those are assured against for non benchmarks only, where we use 100% case only.
 			ExpectedSeries: series[:seriesCut],
+			ExpectedHints: []hintspb.SeriesResponseHints{
+				{},
+			},
 		})
 	}
 	storetestutil.TestServerSeries(t, st, bCases...)
