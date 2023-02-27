@@ -562,7 +562,7 @@ func runQuery(
 			selectorLset,
 			storeResponseTimeout,
 			store.RetrievalStrategy(grpcProxyStrategy),
-			maxConcurrentDecompressWorkers > 0,
+			maxConcurrentDecompressWorkers,
 		)
 		rulesProxy       = rules.NewProxy(logger, endpoints.GetRulesClients)
 		targetsProxy     = targets.NewProxy(logger, endpoints.GetTargetsClients)

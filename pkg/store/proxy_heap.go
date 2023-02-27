@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/types"
+	"github.com/sourcegraph/conc/iter"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
@@ -547,6 +548,7 @@ func newAsyncRespSet(
 	logger log.Logger,
 	emptyStreamResponses prometheus.Counter,
 	adjuster adjusterFn,
+	maxDecompressWorkers int,
 ) (respSet, error) {
 
 	var span opentracing.Span
@@ -629,6 +631,7 @@ func newAsyncRespSet(
 			labelsToRemove,
 			req.MaximumStringSlots,
 			adjuster,
+			maxDecompressWorkers,
 		), nil
 	default:
 		panic(fmt.Sprintf("unsupported retrieval strategy %s", retrievalStrategy))
@@ -664,6 +667,7 @@ type eagerRespSet struct {
 
 	// Internal bookkeeping.
 	bufferedResponses []*storepb.SeriesResponse
+	symbolTables      []map[uint64]string
 	wg                *sync.WaitGroup
 	i                 int
 }
@@ -681,6 +685,7 @@ func newEagerRespSet(
 	removeLabels map[string]struct{},
 	maximumStrings uint64,
 	adjuster adjusterFn,
+	maxDecompressWorkers int,
 ) respSet {
 	ret := &eagerRespSet{
 		span:              span,
@@ -690,6 +695,7 @@ func newEagerRespSet(
 		frameTimeout:      frameTimeout,
 		ctx:               ctx,
 		bufferedResponses: []*storepb.SeriesResponse{},
+		symbolTables:      []map[uint64]string{},
 		wg:                &sync.WaitGroup{},
 		shardMatcher:      shardMatcher,
 		removeLabels:      removeLabels,
@@ -807,6 +813,7 @@ func newEagerRespSet(
 					}
 
 					resp = storepb.NewHintsSeriesResponse(anyHints)
+					l.symbolTables = append(l.symbolTables, adjustedTable)
 				}
 
 				l.bufferedResponses = append(l.bufferedResponses, resp)
@@ -831,6 +838,53 @@ func newEagerRespSet(
 			sortWithoutLabels(l.bufferedResponses, l.removeLabels)
 		}
 
+		if len(l.symbolTables) > 0 {
+			// These can be interleaved with non-compressed series
+			// and we care about order so we have to step through all series.
+			workerCount := 1 + (len(l.bufferedResponses) / 2000000)
+			if workerCount == 1 || maxDecompressWorkers < 1 {
+				for i := range l.bufferedResponses {
+					decodedSeries, err := tryDecodeCompressedSeriesResponse(l.bufferedResponses[i], l.symbolTables)
+					if err != nil {
+						err = errors.Wrapf(err, "failed to decompress %d series from %s", i, st.String())
+						l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(err))
+						l.span.SetTag("err", err.Error())
+						return
+					}
+					l.bufferedResponses[i] = decodedSeries
+				}
+			}
+
+			if maxDecompressWorkers > 0 && workerCount > maxDecompressWorkers {
+				workerCount = maxDecompressWorkers
+			}
+
+			mapper := iter.Mapper[*storepb.SeriesResponse, *storepb.SeriesResponse]{
+				MaxGoroutines: workerCount,
+			}
+
+			responses, err := mapper.MapErr(l.bufferedResponses, func(r **storepb.SeriesResponse) (*storepb.SeriesResponse, error) {
+				decodedSeries, err := tryDecodeCompressedSeriesResponse(*r, l.symbolTables)
+				if err != nil {
+					return nil, errors.Wrap(err, "failed to decompress series")
+				}
+				return decodedSeries, nil
+			})
+			l.bufferedResponses = responses
+			if err == nil {
+				return
+			}
+			// Clear out failures. This is quite bad for performance. Hope that there won't be too many of them.
+			for ri := 0; ri < len(l.bufferedResponses); ri++ {
+				if l.bufferedResponses[ri] != nil {
+					continue
+				}
+				l.bufferedResponses = append(l.bufferedResponses[:ri], l.bufferedResponses[ri+1:]...)
+				ri--
+			}
+			l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(err))
+			l.span.SetTag("err", err.Error())
+		}
 	}(st, ret)
 
 	return ret
@@ -917,4 +971,46 @@ type respSet interface {
 	StoreID() string
 	Labelset() string
 	Empty() bool
+}
+
+func tryDecodeCompressedSeriesResponse(r *storepb.SeriesResponse, symbolTables []map[uint64]string) (*storepb.SeriesResponse, error) {
+	if r.GetCompressedSeries() == nil {
+		return r, nil
+	}
+
+	cs := r.GetCompressedSeries()
+
+	newSeries := &storepb.Series{
+		Chunks: cs.Chunks,
+	}
+
+	lbls := make(labels.Labels, 0, len(cs.Labels))
+
+	for _, cLabel := range cs.Labels {
+		var name, val string
+		for _, symTable := range symbolTables {
+			if foundName, ok := symTable[uint64(cLabel.NameRef)]; ok {
+				name = foundName
+			}
+
+			if foundValue, ok := symTable[uint64(cLabel.ValueRef)]; ok {
+				val = foundValue
+			}
+
+			if name != "" && val != "" {
+				break
+			}
+		}
+		if name == "" || val == "" {
+			return nil, fmt.Errorf("series %+v references do not exist", cLabel)
+		}
+
+		lbls = append(lbls, labels.Label{
+			Name:  name,
+			Value: val,
+		})
+	}
+
+	newSeries.Labels = labelpb.ZLabelsFromPromLabels(lbls)
+	return storepb.NewSeriesResponse(newSeries), nil
 }
