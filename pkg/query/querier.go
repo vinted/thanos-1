@@ -5,7 +5,6 @@ package query
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,7 +23,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
-	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
@@ -221,118 +218,6 @@ type seriesServer struct {
 	compressedSeriesSet []storepb.CompressedSeries
 }
 
-func (s *seriesServer) decompressSeriesIndex(i int) (*storepb.Series, error) {
-	newSeries := &storepb.Series{
-		Chunks: s.compressedSeriesSet[i].Chunks,
-	}
-
-	lbls := make(labels.Labels, 0, len(s.compressedSeriesSet[i].Labels))
-
-	for _, cLabel := range s.compressedSeriesSet[i].Labels {
-		var name, val string
-		for _, symTable := range s.symbolTables {
-			if foundName, ok := symTable[uint64(cLabel.NameRef)]; ok {
-				name = foundName
-			}
-
-			if foundValue, ok := symTable[uint64(cLabel.ValueRef)]; ok {
-				val = foundValue
-			}
-
-			if name != "" && val != "" {
-				break
-			}
-		}
-		if name == "" || val == "" {
-			return nil, fmt.Errorf("series %+v references do not exist", cLabel)
-		}
-
-		lbls = append(lbls, labels.Label{
-			Name:  name,
-			Value: val,
-		})
-	}
-
-	newSeries.Labels = labelpb.ZLabelsFromPromLabels(lbls)
-	return newSeries, nil
-}
-
-func (s *seriesServer) DecompressSeries(maxWorkers int) error {
-	if len(s.compressedSeriesSet) == 0 {
-		return nil
-	}
-
-	workerInput := make(chan int)
-	workerOutput := make(chan *storepb.Series)
-
-	var elements uint64
-	for _, css := range s.compressedSeriesSet {
-		elements += uint64(len(css.Labels)) * 2
-	}
-
-	newSeriesSet := make([]storepb.Series, 0, len(s.seriesSet)+len(s.compressedSeriesSet))
-	newSeriesSet = append(newSeriesSet, s.seriesSet...)
-
-	// NOTE(GiedriusS): Ballpark estimate. With more workers I got slower results.
-	workerCount := 1 + (elements / 2000000)
-	if workerCount == 1 || maxWorkers < 1 {
-		for i := range s.compressedSeriesSet {
-			decompressedSeries, err := s.decompressSeriesIndex(i)
-			if err != nil {
-				return fmt.Errorf("decompressing element %d: %w", i, err)
-			}
-
-			newSeriesSet = append(newSeriesSet, *decompressedSeries)
-		}
-		s.seriesSet = newSeriesSet
-		return nil
-	}
-
-	if maxWorkers > 0 && workerCount > uint64(maxWorkers) {
-		workerCount = uint64(maxWorkers)
-	}
-
-	wg := &sync.WaitGroup{}
-	errLock := sync.Mutex{}
-	errs := tsdb_errors.NewMulti()
-
-	for i := uint64(0); i < workerCount; i++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			for ind := range workerInput {
-				decompressedSeries, err := s.decompressSeriesIndex(ind)
-				if err != nil {
-					errLock.Lock()
-					errs.Add(fmt.Errorf("decompressing element %d: %w", ind, err))
-					errLock.Unlock()
-					continue
-				}
-
-				workerOutput <- decompressedSeries
-			}
-		}()
-	}
-
-	go func() {
-		for i := range s.compressedSeriesSet {
-			workerInput <- i
-		}
-
-		close(workerInput)
-		wg.Wait()
-		close(workerOutput)
-	}()
-
-	for wo := range workerOutput {
-		newSeriesSet = append(newSeriesSet, *wo)
-	}
-	s.seriesSet = newSeriesSet
-
-	return errs.Err()
-}
-
 func (s *seriesServer) Send(r *storepb.SeriesResponse) error {
 	if r.GetWarning() != "" {
 		s.warnings = append(s.warnings, r.GetWarning())
@@ -512,10 +397,6 @@ func (q *querier) selectFn(ctx context.Context, hints *storage.SelectHints, ms .
 	var warns storage.Warnings
 	for _, w := range resp.warnings {
 		warns = append(warns, errors.New(w))
-	}
-
-	if err := resp.DecompressSeries(q.maxConcurrentDecompressWorkers); err != nil {
-		return nil, storepb.SeriesStatsCounter{}, errors.Wrap(err, "decompressing series")
 	}
 
 	// Delete the metric's name from the result because that's what the

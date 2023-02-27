@@ -658,7 +658,7 @@ func newProxyStoreWithTSDBStore(db store.TSDBReader) *store.ProxyStore {
 		nil,
 		0,
 		store.EagerRetrieval,
-		false,
+		0,
 	)
 }
 

@@ -73,10 +73,10 @@ type ProxyStore struct {
 	selectorLabels labels.Labels
 	buffers        sync.Pool
 
-	responseTimeout           time.Duration
-	metrics                   *proxyStoreMetrics
-	retrievalStrategy         RetrievalStrategy
-	enableCompressedRetrieval bool
+	responseTimeout      time.Duration
+	metrics              *proxyStoreMetrics
+	retrievalStrategy    RetrievalStrategy
+	maxDecompressWorkers int
 }
 
 type proxyStoreMetrics struct {
@@ -110,7 +110,7 @@ func NewProxyStore(
 	selectorLabels labels.Labels,
 	responseTimeout time.Duration,
 	retrievalStrategy RetrievalStrategy,
-	enableCompressedRetrieval bool,
+	maxDecompressWorkers int,
 ) *ProxyStore {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -126,10 +126,10 @@ func NewProxyStore(
 			b := make([]byte, 0, initialBufSize)
 			return &b
 		}},
-		responseTimeout:           responseTimeout,
-		metrics:                   metrics,
-		retrievalStrategy:         retrievalStrategy,
-		enableCompressedRetrieval: enableCompressedRetrieval,
+		responseTimeout:      responseTimeout,
+		metrics:              metrics,
+		retrievalStrategy:    retrievalStrategy,
+		maxDecompressWorkers: maxDecompressWorkers,
 	}
 	return s
 }
@@ -289,8 +289,14 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 	}
 
 	// Zero maximum slots indicated that we want uncompressed data.
-	if s.enableCompressedRetrieval {
+	if s.maxDecompressWorkers > 0 {
 		r.MaximumStringSlots = maxStringsPerStore(uint64(len(stores)))
+		// NOTE(GiedriusS): we force eager retrieval here
+		// because with symbol tabels either way we have to wait
+		// till the end to build the initial structure of the heap
+		// so switch to eager retrieval because there won't be any
+		// gain from laziness.
+		s.retrievalStrategy = EagerRetrieval
 	}
 	adjusterFactory := newReferenceAdjusterFactory(uint64(len(stores)))
 
@@ -302,7 +308,7 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
 
 		adjuster := adjusterFactory(uint64(storeIndex))
-		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses, adjuster)
+		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses, adjuster, s.maxDecompressWorkers)
 		if err != nil {
 			level.Error(reqLogger).Log("err", err)
 
