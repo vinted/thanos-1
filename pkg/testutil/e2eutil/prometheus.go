@@ -440,6 +440,8 @@ func createBlock(
 		}
 	}()
 
+	r := rand.New(rand.NewSource(int64(numSamples)))
+
 	var g errgroup.Group
 	var timeStepSize = (maxt - mint) / int64(numSamples+1)
 	var batchSize = len(series) / runtime.GOMAXPROCS(0)
@@ -459,7 +461,7 @@ func createBlock(
 				app := h.Appender(ctx)
 
 				for _, lset := range batch {
-					_, err := app.Append(0, lset, t, rand.Float64())
+					_, err := app.Append(0, lset, t, r.Float64())
 					if err != nil {
 						if rerr := app.Rollback(); rerr != nil {
 							err = errors.Wrapf(err, "rollback failed: %v", rerr)
