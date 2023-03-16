@@ -67,7 +67,7 @@ require (
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.42.0
 	github.com/sony/gobreaker v0.5.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	github.com/thanos-community/promql-engine v0.0.0-20230213101639-ab3d8dcea3f3
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
@@ -257,7 +257,7 @@ replace (
 	github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 	github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20230222110627-c34d2da778af
 
-	github.com/thanos-community/promql-engine => github.com/vinted/promql-engine v0.0.0-20230224111637-1a0d8a2b0817
+	github.com/thanos-community/promql-engine => github.com/vinted/promql-engine v0.0.0-20230316155821-e2b4c803b8c8
 
 	github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
 
