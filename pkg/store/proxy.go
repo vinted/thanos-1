@@ -73,10 +73,9 @@ type ProxyStore struct {
 	selectorLabels labels.Labels
 	buffers        sync.Pool
 
-	responseTimeout           time.Duration
-	metrics                   *proxyStoreMetrics
-	retrievalStrategy         RetrievalStrategy
-	enableCompressedRetrieval bool
+	responseTimeout   time.Duration
+	metrics           *proxyStoreMetrics
+	retrievalStrategy RetrievalStrategy
 }
 
 type proxyStoreMetrics struct {
@@ -110,7 +109,6 @@ func NewProxyStore(
 	selectorLabels labels.Labels,
 	responseTimeout time.Duration,
 	retrievalStrategy RetrievalStrategy,
-	enableCompressedRetrieval bool,
 ) *ProxyStore {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -126,10 +124,9 @@ func NewProxyStore(
 			b := make([]byte, 0, initialBufSize)
 			return &b
 		}},
-		responseTimeout:           responseTimeout,
-		metrics:                   metrics,
-		retrievalStrategy:         retrievalStrategy,
-		enableCompressedRetrieval: enableCompressedRetrieval,
+		responseTimeout:   responseTimeout,
+		metrics:           metrics,
+		retrievalStrategy: retrievalStrategy,
 	}
 	return s
 }
@@ -288,21 +285,14 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 		return nil
 	}
 
-	// Zero maximum slots indicated that we want uncompressed data.
-	if s.enableCompressedRetrieval {
-		r.MaximumStringSlots = maxStringsPerStore(uint64(len(stores)))
-	}
-	adjusterFactory := newReferenceAdjusterFactory(uint64(len(stores)))
-
 	storeResponses := make([]respSet, 0, len(stores))
 
-	for storeIndex, st := range stores {
+	for _, st := range stores {
 		st := st
 
 		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
 
-		adjuster := adjusterFactory(uint64(storeIndex))
-		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses, adjuster)
+		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses)
 		if err != nil {
 			level.Error(reqLogger).Log("err", err)
 

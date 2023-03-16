@@ -193,7 +193,7 @@ func TestQueryEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout, 0),
+		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
 		queryEngine:           qe,
 		lookbackDeltaCreate:   func(m int64) time.Duration { return time.Duration(0) },
 		gate:                  gate.New(nil, 4, gate.Queries),
@@ -658,7 +658,6 @@ func newProxyStoreWithTSDBStore(db store.TSDBReader) *store.ProxyStore {
 		nil,
 		0,
 		store.EagerRetrieval,
-		false,
 	)
 }
 
@@ -753,7 +752,7 @@ func TestMetadataEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:     query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout, 0),
+		queryableCreate:     query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
 		queryEngine:         qe,
 		lookbackDeltaCreate: func(m int64) time.Duration { return time.Duration(0) },
 		gate:                gate.New(nil, 4, gate.Queries),
@@ -766,7 +765,7 @@ func TestMetadataEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:          query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout, 0),
+		queryableCreate:          query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
 		queryEngine:              qe,
 		lookbackDeltaCreate:      func(m int64) time.Duration { return time.Duration(0) },
 		gate:                     gate.New(nil, 4, gate.Queries),

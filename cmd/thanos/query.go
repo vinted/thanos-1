@@ -124,9 +124,6 @@ func registerQuery(app *extkingpin.App) {
 	maxConcurrentSelects := cmd.Flag("query.max-concurrent-select", "Maximum number of select requests made concurrently per a query.").
 		Default("4").Int()
 
-	maxConcurrentDecompressWorkers := cmd.Flag("query.max-concurrent-decompress-workers", "Maximum number of workers spawned to decompress a set of compressed storepb.Series. Setting this to higher than zero enables label compression during querying - CPU usage will be slightly higher whilst network usage will be significantly lower.").
-		Default("0").Int()
-
 	queryConnMetricLabels := cmd.Flag("query.conn-metric.label", "Optional selection of query connection metric labels to be collected from endpoint set").
 		Default(string(query.ExternalLabels), string(query.StoreType)).
 		Enums(string(query.ExternalLabels), string(query.StoreType))
@@ -350,7 +347,6 @@ func registerQuery(app *extkingpin.App) {
 			promqlEngineType(*promqlEngine),
 			storeRateLimits,
 			queryMode(*promqlQueryMode),
-			*maxConcurrentDecompressWorkers,
 		)
 	})
 }
@@ -431,7 +427,6 @@ func runQuery(
 	promqlEngine promqlEngineType,
 	storeRateLimits store.SeriesSelectLimits,
 	queryMode queryMode,
-	maxConcurrentDecompressWorkers int,
 ) error {
 	if alertQueryURL == "" {
 		lastColon := strings.LastIndex(httpBindAddr, ":")
@@ -554,16 +549,7 @@ func runQuery(
 			endpointInfoTimeout,
 			queryConnMetricLabels...,
 		)
-		proxy = store.NewProxyStore(
-			logger,
-			reg,
-			endpoints.GetStoreClients,
-			component.Query,
-			selectorLset,
-			storeResponseTimeout,
-			store.RetrievalStrategy(grpcProxyStrategy),
-			maxConcurrentDecompressWorkers > 0,
-		)
+		proxy            = store.NewProxyStore(logger, reg, endpoints.GetStoreClients, component.Query, selectorLset, storeResponseTimeout, store.RetrievalStrategy(grpcProxyStrategy))
 		rulesProxy       = rules.NewProxy(logger, endpoints.GetRulesClients)
 		targetsProxy     = targets.NewProxy(logger, endpoints.GetTargetsClients)
 		metadataProxy    = metadata.NewProxy(logger, endpoints.GetMetricMetadataClients)
@@ -574,7 +560,6 @@ func runQuery(
 			proxy,
 			maxConcurrentSelects,
 			queryTimeout,
-			maxConcurrentDecompressWorkers,
 		)
 	)
 
