@@ -482,8 +482,6 @@ func createBlock(
 		}
 	}()
 
-	r := rand.New(rand.NewSource(int64(numSamples)))
-
 	var g errgroup.Group
 	var timeStepSize = (maxt - mint) / int64(numSamples+1)
 	var batchSize = len(series) / runtime.GOMAXPROCS(0)
