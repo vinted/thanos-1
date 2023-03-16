@@ -483,7 +483,7 @@ func (p *PrometheusStore) handleCompactPrometheusResponse(
 				continue
 			}
 
-			seriesStats.CountSeries(labelpb.HashWithPrefix("", series.Labels))
+			seriesStats.CountSeries(series.Labels)
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 
 			for i, chk := range series.Chunks {
