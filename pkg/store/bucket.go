@@ -352,7 +352,7 @@ type BucketStore struct {
 	postingOffsetsInMemSampling int
 
 	// Enables hints in the Series() response.
-	enableQueriedBlocksHints bool
+	enableSeriesResponseHints bool
 
 	enableChunkHashCalculation bool
 }
@@ -479,7 +479,7 @@ func NewBucketStore(
 		partitioner:                 partitioner,
 		enableCompatibilityLabel:    enableCompatibilityLabel,
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
-		enableQueriedBlocksHints:    enableSeriesResponseHints,
+		enableSeriesResponseHints:   enableSeriesResponseHints,
 		enableChunkHashCalculation:  enableChunkHashCalculation,
 		seriesBatchSize:             SeriesBatchSize,
 	}
@@ -1225,7 +1225,6 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	}
 
 	s.mtx.RLock()
-
 	for _, bs := range s.blockSets {
 		blockMatchers, ok := bs.labelMatchers(matchers...)
 		if !ok {
@@ -1242,7 +1241,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			blk := b
 			gctx := gctx
 
-			if s.enableQueriedBlocksHints {
+			if s.enableSeriesResponseHints {
 				// Keep track of queried blocks.
 				resHints.AddQueriedBlock(blk.meta.ULID)
 			}
@@ -1294,8 +1293,6 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 					shardMatcher,
 					false,
 					s.metrics.emptyPostingCount,
-					req.MaximumStringSlots,
-					nil,
 				)
 
 				mtx.Lock()
@@ -1357,8 +1354,6 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		s.metrics.seriesBlocksQueried.Observe(float64(stats.blocksQueried))
 	}
 
-	symbolTableBuilder := newSymbolTableBuilder(req.MaximumStringSlots)
-
 	// Merge the sub-results from each selected block.
 	tracing.DoInSpan(ctx, "bucket_store_merge_all", func(ctx context.Context) {
 		defer func() {
@@ -1386,35 +1381,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 					stats.mergedChunksCount += len(series.Chunks)
 					s.metrics.chunkSizeBytes.Observe(float64(chunksSize(series.Chunks)))
 				}
-
-				lset := series.Labels
-
-				var compressedResponse bool = true
-				compressedLabels := make([]labelpb.CompressedLabel, 0, len(lset))
-
-				for _, lbl := range lset {
-					nameRef, nok := symbolTableBuilder.getOrStoreString(lbl.Name)
-					valueRef, vok := symbolTableBuilder.getOrStoreString(lbl.Value)
-
-					if !nok || !vok {
-						compressedResponse = false
-						break
-					} else if compressedResponse && nok && vok {
-						compressedLabels = append(compressedLabels, labelpb.CompressedLabel{
-							NameRef:  nameRef,
-							ValueRef: valueRef,
-						})
-					}
-				}
-
-				if compressedResponse {
-					at = storepb.NewCompressedSeriesResponse(&storepb.CompressedSeries{
-						Labels: compressedLabels,
-						Chunks: series.Chunks,
-					})
-				}
 			}
-
 			if err = srv.Send(at); err != nil {
 				err = status.Error(codes.Unknown, errors.Wrap(err, "send series response").Error())
 				return
@@ -1429,9 +1396,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		return err
 	}
 
-	resHints.StringSymbolTable = symbolTableBuilder.getTable()
-
-	{
+	if s.enableSeriesResponseHints {
 		var anyHints *types.Any
 
 		if anyHints, err = types.MarshalAny(resHints); err != nil {

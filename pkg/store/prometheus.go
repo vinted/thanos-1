@@ -23,7 +23,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
-	"github.com/gogo/protobuf/types"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,7 +35,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/httpconfig"
 	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/store/storepb/prompb"
@@ -216,7 +214,6 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	for _, lbl := range r.WithoutReplicaLabels {
 		extLsetToRemove[lbl] = struct{}{}
 	}
-	symbolTableBuilder := newSymbolTableBuilder(r.MaximumStringSlots)
 
 	if r.SkipChunks {
 		finalExtLset := rmLabels(extLset.Copy(), extLsetToRemove)
@@ -233,24 +230,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 			sort.Slice(lset, func(i, j int) bool {
 				return lset[i].Name < lset[j].Name
 			})
-
 			if err = s.Send(storepb.NewSeriesResponse(&storepb.Series{Labels: lset})); err != nil {
-				return err
-			}
-		}
-
-		{
-			var anyHints *types.Any
-
-			resHints := &hintspb.SeriesResponseHints{StringSymbolTable: symbolTableBuilder.getTable()}
-
-			if anyHints, err = types.MarshalAny(resHints); err != nil {
-				err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
-				return err
-			}
-
-			if err = s.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
-				err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
 				return err
 			}
 		}
@@ -323,7 +303,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	if !strings.HasPrefix(contentType, "application/x-streamed-protobuf; proto=prometheus.ChunkedReadResponse") {
 		return errors.Errorf("not supported remote read content type: %s", contentType)
 	}
-	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove, symbolTableBuilder)
+	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
 }
 
 func (p *PrometheusStore) queryPrometheus(
@@ -503,7 +483,7 @@ func (p *PrometheusStore) handleCompactPrometheusResponse(
 				continue
 			}
 
-			seriesStats.CountSeries(labelpb.HashWithPrefix("", series.Labels))
+			seriesStats.CountSeries(series.Labels)
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 
 			for i, chk := range series.Chunks {
@@ -555,7 +535,6 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 	querySpan tracing.Span,
 	calculateChecksums bool,
 	extLsetToRemove map[string]struct{},
-	lookupTable *symbolTableBuilder,
 ) error {
 	level.Debug(p.logger).Log("msg", "started handling ReadRequest_STREAMED_XOR_CHUNKS streamed read response.")
 
@@ -602,24 +581,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 				continue
 			}
 
-			compressedLabels := make([]labelpb.CompressedLabel, 0, len(completeLabelset))
-			var compressedResponse bool = true
-			for _, lbl := range completeLabelset {
-				nameRef, nok := lookupTable.getOrStoreString(lbl.Name)
-				valueRef, vok := lookupTable.getOrStoreString(lbl.Value)
-
-				if !nok || !vok {
-					compressedResponse = false
-					break
-				} else if compressedResponse && nok && vok {
-					compressedLabels = append(compressedLabels, labelpb.CompressedLabel{
-						NameRef:  nameRef,
-						ValueRef: valueRef,
-					})
-				}
-			}
-
-			seriesStats.CountSeries(labelpb.HashWithPrefix("", series.Labels))
+			seriesStats.CountSeries(series.Labels)
 			thanosChks := make([]storepb.AggrChunk, len(series.Chunks))
 
 			for i, chk := range series.Chunks {
@@ -643,40 +605,15 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 				series.Chunks[i].Data = nil
 			}
 
-			var r *storepb.SeriesResponse
-
-			if compressedResponse {
-				r = storepb.NewCompressedSeriesResponse(&storepb.CompressedSeries{
-					Chunks: thanosChks,
-					Labels: compressedLabels,
-				})
-			} else {
-				r = storepb.NewSeriesResponse(&storepb.Series{
-					Labels: labelpb.ZLabelsFromPromLabels(completeLabelset),
-					Chunks: thanosChks,
-				})
-			}
-
+			r := storepb.NewSeriesResponse(&storepb.Series{
+				Labels: labelpb.ZLabelsFromPromLabels(
+					completeLabelset,
+				),
+				Chunks: thanosChks,
+			})
 			if err := s.Send(r); err != nil {
 				return err
 			}
-		}
-	}
-
-	{
-		var anyHints *types.Any
-		var err error
-
-		resHints := &hintspb.SeriesResponseHints{StringSymbolTable: lookupTable.getTable()}
-
-		if anyHints, err = types.MarshalAny(resHints); err != nil {
-			err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
-			return err
-		}
-
-		if err = s.Send(storepb.NewHintsSeriesResponse(anyHints)); err != nil {
-			err = status.Error(codes.Unknown, errors.Wrap(err, "send series response hints").Error())
-			return err
 		}
 	}
 

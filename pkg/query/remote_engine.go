@@ -44,6 +44,9 @@ func NewClient(queryClient querypb.QueryClient, address string, maxt int64, labe
 
 func (q Client) MaxT() int64 { return q.maxt }
 
+// NOTE(GiedriusS): stub for now.
+func (q Client) MinT() int64 { return 0 }
+
 func (q Client) LabelSets() []labels.Labels { return q.labelSets }
 
 func (q Client) GetAddress() string { return q.address }

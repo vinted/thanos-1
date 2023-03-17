@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/types"
-
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/tracing"
@@ -359,8 +356,6 @@ func newLazyRespSet(
 	shardMatcher *storepb.ShardMatcher,
 	applySharding bool,
 	emptyStreamResponses prometheus.Counter,
-	maximumStrings uint64,
-	adjuster adjusterFn,
 ) respSet {
 	bufferedResponses := []*storepb.SeriesResponse{}
 	bufferedResponsesMtx := &sync.Mutex{}
@@ -392,22 +387,12 @@ func newLazyRespSet(
 			l.span.Finish()
 		}()
 
-		var stringCnt uint64
 		numResponses := 0
 		defer func() {
 			if numResponses == 0 {
 				emptyStreamResponses.Inc()
 			}
 		}()
-
-		handleErr := func(e error) {
-			l.bufferedResponsesMtx.Lock()
-			l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(e))
-			l.noMoreData = true
-			l.dataOrFinishEvent.Signal()
-			l.bufferedResponsesMtx.Unlock()
-			l.span.SetTag("err", e.Error())
-		}
 
 		handleRecvResponse := func(t *time.Timer) bool {
 			if t != nil {
@@ -416,7 +401,14 @@ func newLazyRespSet(
 
 			select {
 			case <-l.ctx.Done():
-				handleErr(errors.Wrapf(l.ctx.Err(), "failed to receive any data from %s", st))
+				err := errors.Wrapf(l.ctx.Err(), "failed to receive any data from %s", st)
+				l.span.SetTag("err", err.Error())
+
+				l.bufferedResponsesMtx.Lock()
+				l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(err))
+				l.noMoreData = true
+				l.dataOrFinishEvent.Signal()
+				l.bufferedResponsesMtx.Unlock()
 				return false
 			default:
 				resp, err := cl.Recv()
@@ -440,7 +432,13 @@ func newLazyRespSet(
 						rerr = errors.Wrapf(err, "receive series from %s", st)
 					}
 
-					handleErr(rerr)
+					l.span.SetTag("err", rerr.Error())
+
+					l.bufferedResponsesMtx.Lock()
+					l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(rerr))
+					l.noMoreData = true
+					l.dataOrFinishEvent.Signal()
+					l.bufferedResponsesMtx.Unlock()
 					return false
 				}
 
@@ -453,50 +451,6 @@ func newLazyRespSet(
 
 				if resp.GetSeries() != nil {
 					seriesStats.Count(resp.GetSeries())
-				}
-
-				if resp.GetCompressedSeries() != nil {
-					cs := resp.GetCompressedSeries()
-					seriesStats.Count(cs)
-
-					stringCnt += uint64(len(cs.Labels))
-
-					if stringCnt > maximumStrings {
-						handleErr(fmt.Errorf("maximum string limit %d exceeded", maximumStrings))
-						return false
-					}
-
-					for i := range cs.Labels {
-						cs.Labels[i].NameRef = adjuster(cs.Labels[i].NameRef)
-						cs.Labels[i].ValueRef = adjuster(cs.Labels[i].ValueRef)
-					}
-				}
-
-				if resp.GetHints() != nil {
-					var seriesResponseHints hintspb.SeriesResponseHints
-					var anyHints *types.Any
-
-					if err := types.UnmarshalAny(resp.GetHints(), &seriesResponseHints); err != nil {
-						handleErr(err)
-						return false
-					}
-
-					adjustedTable := map[uint64]string{}
-
-					for k, v := range seriesResponseHints.StringSymbolTable {
-						adjustedTable[adjuster(k)] = v
-					}
-
-					seriesResponseHints.StringSymbolTable = adjustedTable
-
-					resHints := &hintspb.SeriesResponseHints{StringSymbolTable: adjustedTable, QueriedBlocks: seriesResponseHints.QueriedBlocks}
-
-					if anyHints, err = types.MarshalAny(resHints); err != nil {
-						handleErr(err)
-						return false
-					}
-
-					resp = storepb.NewHintsSeriesResponse(anyHints)
 				}
 
 				l.bufferedResponsesMtx.Lock()
@@ -546,7 +500,6 @@ func newAsyncRespSet(
 	shardInfo *storepb.ShardInfo,
 	logger log.Logger,
 	emptyStreamResponses prometheus.Counter,
-	adjuster adjusterFn,
 ) (respSet, error) {
 
 	var span opentracing.Span
@@ -612,8 +565,6 @@ func newAsyncRespSet(
 			shardMatcher,
 			applySharding,
 			emptyStreamResponses,
-			req.MaximumStringSlots,
-			adjuster,
 		), nil
 	case EagerRetrieval:
 		return newEagerRespSet(
@@ -627,8 +578,6 @@ func newAsyncRespSet(
 			applySharding,
 			emptyStreamResponses,
 			labelsToRemove,
-			req.MaximumStringSlots,
-			adjuster,
 		), nil
 	default:
 		panic(fmt.Sprintf("unsupported retrieval strategy %s", retrievalStrategy))
@@ -679,8 +628,6 @@ func newEagerRespSet(
 	applySharding bool,
 	emptyStreamResponses prometheus.Counter,
 	removeLabels map[string]struct{},
-	maximumStrings uint64,
-	adjuster adjusterFn,
 ) respSet {
 	ret := &eagerRespSet{
 		span:              span,
@@ -712,7 +659,6 @@ func newEagerRespSet(
 		}()
 
 		numResponses := 0
-		var stringCnt uint64
 		defer func() {
 			if numResponses == 0 {
 				emptyStreamResponses.Inc()
@@ -762,51 +708,6 @@ func newEagerRespSet(
 
 				if resp.GetSeries() != nil {
 					seriesStats.Count(resp.GetSeries())
-				}
-
-				if resp.GetCompressedSeries() != nil {
-					cs := resp.GetCompressedSeries()
-					seriesStats.Count(cs)
-
-					stringCnt += uint64(len(cs.Labels))
-
-					if stringCnt > maximumStrings {
-						err := fmt.Errorf("maximum string limit %d exceeded", maximumStrings)
-						l.span.SetTag("err", err.Error())
-						return false
-					}
-
-					for i := range cs.Labels {
-						cs.Labels[i].NameRef = adjuster(cs.Labels[i].NameRef)
-						cs.Labels[i].ValueRef = adjuster(cs.Labels[i].ValueRef)
-					}
-				}
-
-				if resp.GetHints() != nil {
-					var seriesResponseHints hintspb.SeriesResponseHints
-					var anyHints *types.Any
-
-					if err := types.UnmarshalAny(resp.GetHints(), &seriesResponseHints); err != nil {
-						l.span.SetTag("err", err.Error())
-						return false
-					}
-
-					adjustedTable := map[uint64]string{}
-
-					for k, v := range seriesResponseHints.StringSymbolTable {
-						adjustedTable[adjuster(k)] = v
-					}
-
-					seriesResponseHints.StringSymbolTable = adjustedTable
-
-					resHints := &hintspb.SeriesResponseHints{StringSymbolTable: adjustedTable, QueriedBlocks: seriesResponseHints.QueriedBlocks}
-
-					if anyHints, err = types.MarshalAny(resHints); err != nil {
-						l.span.SetTag("err", err.Error())
-						return false
-					}
-
-					resp = storepb.NewHintsSeriesResponse(anyHints)
 				}
 
 				l.bufferedResponses = append(l.bufferedResponses, resp)
