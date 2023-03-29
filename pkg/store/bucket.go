@@ -2307,6 +2307,7 @@ type postingPtr struct {
 // If postings for given key is not fetched, entry at given index will be nil.
 func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Label, bytesLimiter BytesLimiter) ([]index.Postings, []func(), error) {
 	var closeFns []func()
+
 	timer := prometheus.NewTimer(r.block.metrics.postingsFetchDuration)
 	defer timer.ObserveDuration()
 
