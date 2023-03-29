@@ -5,8 +5,10 @@ package storecache
 
 import (
 	"context"
+	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
@@ -28,17 +30,28 @@ type RemoteIndexCache struct {
 	memcached cacheutil.RemoteCacheClient
 
 	// Metrics.
-	requests *prometheus.CounterVec
-	hits     *prometheus.CounterVec
+	requests                  *prometheus.CounterVec
+	hits                      *prometheus.CounterVec
+	requestPostingsDuplicated prometheus.Counter
+
+	requestInProgress     map[uint64]int
+	requestInProgressLock sync.Mutex
+	hashInputPool         *sync.Pool
 }
 
 // NewRemoteIndexCache makes a new RemoteIndexCache.
 func NewRemoteIndexCache(logger log.Logger, cacheClient cacheutil.RemoteCacheClient, reg prometheus.Registerer) (*RemoteIndexCache, error) {
 	c := &RemoteIndexCache{
-		logger:    logger,
-		memcached: cacheClient,
+		logger:            logger,
+		memcached:         cacheClient,
+		requestInProgress: make(map[uint64]int),
+		hashInputPool:     &sync.Pool{New: func() any { return new([]byte) }},
 	}
 
+	c.requestPostingsDuplicated = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_store_index_cache_duplicate_postings_requests_total",
+		Help: "Total number of duplicate postings requests to the cache.",
+	})
 	c.requests = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "thanos_store_index_cache_requests_total",
 		Help: "Total number of items requests to the cache.",
@@ -73,6 +86,40 @@ func (c *RemoteIndexCache) StorePostings(ctx context.Context, blockID ulid.ULID,
 // and returns a map containing cache hits, along with a list of missing keys.
 // In case of error, it logs and return an empty cache hits map.
 func (c *RemoteIndexCache) FetchMultiPostings(ctx context.Context, blockID ulid.ULID, lbls []labels.Label) (hits map[labels.Label][]byte, misses []labels.Label) {
+	b := c.hashInputPool.Get().(*[]byte)
+
+	hashInput := (*b)[:0]
+	hashInput = append(hashInput, blockID[:]...)
+	for _, lbl := range lbls {
+		hashInput = append(hashInput, []byte(lbl.Name)...)
+		hashInput = append(hashInput, byte(0))
+		hashInput = append(hashInput, []byte(lbl.Value)...)
+		hashInput = append(hashInput, byte(0))
+	}
+	callSig := xxhash.Sum64(hashInput)
+	c.hashInputPool.Put(&hashInput)
+
+	defer func() {
+		c.requestInProgressLock.Lock()
+		if _, ok := c.requestInProgress[callSig]; ok {
+			c.requestInProgress[callSig]--
+			if c.requestInProgress[callSig] == 0 {
+				delete(c.requestInProgress, callSig)
+			}
+		}
+		c.requestInProgressLock.Unlock()
+	}()
+
+	c.requestInProgressLock.Lock()
+	if _, ok := c.requestInProgress[callSig]; ok {
+		// Would have deduplicated ideally.
+		c.requestPostingsDuplicated.Inc()
+		c.requestInProgress[callSig]++
+	} else {
+		c.requestInProgress[callSig] = 1
+	}
+	c.requestInProgressLock.Unlock()
+
 	// Build the cache keys, while keeping a map between input label and the cache key
 	// so that we can easily reverse it back after the GetMulti().
 	keys := make([]string, 0, len(lbls))
