@@ -5,8 +5,10 @@ package store
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/encoding"
@@ -82,27 +84,53 @@ func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
 	return buf.B, nil
 }
 
-func diffVarintSnappyDecode(input []byte) (index.Postings, error) {
+var snappyDecodePool sync.Pool
+
+type closeablePostings interface {
+	index.Postings
+	close()
+}
+
+func diffVarintSnappyDecode(input []byte) (closeablePostings, error) {
 	if !isDiffVarintSnappyEncodedPostings(input) {
 		return nil, errors.New("header not found")
 	}
 
-	raw, err := snappy.Decode(nil, input[len(codecHeaderSnappy):])
+	var dstBuf []byte
+	decodeBuf := snappyDecodePool.Get()
+	if decodeBuf != nil {
+		dstBuf = *(decodeBuf.(*[]byte))
+	}
+
+	raw, err := s2.Decode(dstBuf, input[len(codecHeaderSnappy):])
 	if err != nil {
 		return nil, errors.Wrap(err, "snappy decode")
 	}
 
-	return newDiffVarintPostings(raw), nil
+	biggerSlice := raw
+	if cap(dstBuf) > cap(biggerSlice) {
+		biggerSlice = dstBuf
+	}
+
+	return newDiffVarintPostings(raw, biggerSlice), nil
 }
 
-func newDiffVarintPostings(input []byte) *diffVarintPostings {
-	return &diffVarintPostings{buf: &encoding.Decbuf{B: input}}
+func newDiffVarintPostings(input, freeSlice []byte) *diffVarintPostings {
+	return &diffVarintPostings{freeSlice: freeSlice, buf: &encoding.Decbuf{B: input}}
 }
 
 // diffVarintPostings is an implementation of index.Postings based on diff+varint encoded data.
 type diffVarintPostings struct {
-	buf *encoding.Decbuf
-	cur storage.SeriesRef
+	buf       *encoding.Decbuf
+	cur       storage.SeriesRef
+	freeSlice []byte
+}
+
+func (it *diffVarintPostings) close() {
+	if it.freeSlice == nil {
+		return
+	}
+	snappyDecodePool.Put(&it.freeSlice)
 }
 
 func (it *diffVarintPostings) At() storage.SeriesRef {

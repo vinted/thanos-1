@@ -683,7 +683,11 @@ func runQuery(
 		queryEngine = promql.NewEngine(engineOpts)
 	case promqlEngineThanos:
 		if queryMode == queryModeLocal {
-			queryEngine = engine.New(engine.Opts{EngineOpts: engineOpts})
+			queryEngine = engine.New(engine.Opts{
+				EngineOpts:       engineOpts,
+				EnableXFunctions: true,
+				ExtLookbackDelta: 8 * time.Hour,
+			})
 		} else {
 			remoteEngineEndpoints := query.NewRemoteEndpoints(logger, endpoints.GetQueryAPIClients, query.Opts{
 				AutoDownsample:        enableAutodownsampling,

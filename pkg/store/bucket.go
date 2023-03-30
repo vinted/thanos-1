@@ -2160,7 +2160,12 @@ func (r *bucketIndexReader) ExpandedPostings(ctx context.Context, ms []*labels.M
 		keys = append(keys, allPostingsLabel)
 	}
 
-	fetchedPostings, err := r.fetchPostings(ctx, keys, bytesLimiter)
+	fetchedPostings, closeFns, err := r.fetchPostings(ctx, keys, bytesLimiter)
+	defer func() {
+		for _, closeFn := range closeFns {
+			closeFn()
+		}
+	}()
 	if err != nil {
 		return nil, errors.Wrap(err, "get postings")
 	}
@@ -2300,7 +2305,9 @@ type postingPtr struct {
 // fetchPostings fill postings requested by posting groups.
 // It returns one postings for each key, in the same order.
 // If postings for given key is not fetched, entry at given index will be nil.
-func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Label, bytesLimiter BytesLimiter) ([]index.Postings, error) {
+func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Label, bytesLimiter BytesLimiter) ([]index.Postings, []func(), error) {
+	var closeFns []func()
+
 	timer := prometheus.NewTimer(r.block.metrics.postingsFetchDuration)
 	defer timer.ObserveDuration()
 
@@ -2312,7 +2319,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 	fromCache, _ := r.block.indexCache.FetchMultiPostings(ctx, r.block.meta.ULID, keys)
 	for _, dataFromCache := range fromCache {
 		if err := bytesLimiter.Reserve(uint64(len(dataFromCache))); err != nil {
-			return nil, errors.Wrap(err, "bytes limit exceeded while loading postings from index cache")
+			return nil, closeFns, errors.Wrap(err, "bytes limit exceeded while loading postings from index cache")
 		}
 	}
 
@@ -2333,18 +2340,21 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 			)
 			if isDiffVarintSnappyEncodedPostings(b) {
 				s := time.Now()
-				l, err = diffVarintSnappyDecode(b)
+				clPostings, err := diffVarintSnappyDecode(b)
 				r.stats.cachedPostingsDecompressions += 1
 				r.stats.CachedPostingsDecompressionTimeSum += time.Since(s)
 				if err != nil {
 					r.stats.cachedPostingsDecompressionErrors += 1
+				} else {
+					closeFns = append(closeFns, clPostings.close)
+					l = clPostings
 				}
 			} else {
 				_, l, err = r.dec.Postings(b)
 			}
 
 			if err != nil {
-				return nil, errors.Wrap(err, "decode postings")
+				return nil, closeFns, errors.Wrap(err, "decode postings")
 			}
 
 			output[ix] = l
@@ -2360,7 +2370,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 		}
 
 		if err != nil {
-			return nil, errors.Wrap(err, "index header PostingsOffset")
+			return nil, nil, errors.Wrap(err, "index header PostingsOffset")
 		}
 
 		r.stats.postingsToFetch++
@@ -2382,7 +2392,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 		length := int64(part.End) - start
 
 		if err := bytesLimiter.Reserve(uint64(length)); err != nil {
-			return nil, errors.Wrap(err, "bytes limit exceeded while fetching postings")
+			return nil, nil, errors.Wrap(err, "bytes limit exceeded while fetching postings")
 		}
 	}
 
@@ -2460,7 +2470,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 		})
 	}
 
-	return output, g.Wait()
+	return output, closeFns, g.Wait()
 }
 
 func resizePostings(b []byte) ([]byte, error) {
