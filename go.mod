@@ -126,7 +126,7 @@ require (
 	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
 )
 
-require go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
+require go4.org/unsafe/assume-no-moving-gc v0.0.0-20230221090011-e4bae7ad2296 // indirect
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
