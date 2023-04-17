@@ -686,7 +686,7 @@ func runQuery(
 			queryEngine = engine.New(engine.Opts{
 				EngineOpts:       engineOpts,
 				EnableXFunctions: true,
-				ExtLookbackDelta: 8 * time.Hour,
+				ExtLookbackDelta: 24 * time.Hour,
 			})
 		} else {
 			remoteEngineEndpoints := query.NewRemoteEndpoints(logger, endpoints.GetQueryAPIClients, query.Opts{
