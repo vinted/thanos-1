@@ -126,7 +126,7 @@ require (
 	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
 )
 
-require go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
+require go4.org/unsafe/assume-no-moving-gc v0.0.0-20230221090011-e4bae7ad2296 // indirect
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
@@ -257,7 +257,7 @@ replace (
 	github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 	github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20230222110627-c34d2da778af
 
-	github.com/thanos-community/promql-engine => github.com/vinted/promql-engine v0.0.0-20230330103506-463854cc1ee0
+	github.com/thanos-community/promql-engine => github.com/vinted/promql-engine v0.0.0-20230417102240-95c12da8c11e
 
 	github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
 
