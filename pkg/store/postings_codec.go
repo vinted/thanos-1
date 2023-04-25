@@ -6,6 +6,7 @@ package store
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"sync"
 
@@ -31,14 +32,19 @@ const (
 	codecHeaderStreamedSnappy = "dss" // As in "diffvarint+streamed snappy".
 )
 
-func getDecodingFunction(input []byte) func([]byte) (closeablePostings, error) {
-	if isDiffVarintSnappyEncodedPostings(input) {
-		return diffVarintSnappyDecode
+func decodePostings(input []byte) (closeablePostings, error) {
+	var df func([]byte) (closeablePostings, error)
+
+	switch {
+	case isDiffVarintSnappyEncodedPostings(input):
+		df = diffVarintSnappyDecode
+	case isDiffVarintSnappyStreamedEncodedPostings(input):
+		df = diffVarintSnappyStreamedDecode
+	default:
+		return nil, fmt.Errorf("unrecognize postings format")
 	}
-	if isDiffVarintSnappyStreamedEncodedPostings(input) {
-		return diffVarintSnappyStreamedDecode
-	}
-	return nil
+
+	return df(input)
 }
 
 // isDiffVarintSnappyEncodedPostings returns true, if input looks like it has been encoded by diff+varint+snappy codec.
@@ -51,39 +57,49 @@ func isDiffVarintSnappyStreamedEncodedPostings(input []byte) bool {
 	return bytes.HasPrefix(input, []byte(codecHeaderStreamedSnappy))
 }
 
-func writeUvarint(w io.Writer, oneByteSlice []byte, x uint64) error {
-	for x >= 0x80 {
-		oneByteSlice[0] = byte(x) | 0x80
-		n, err := w.Write(oneByteSlice)
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return io.EOF
-		}
-		x >>= 7
-	}
-	oneByteSlice[0] = byte(x)
-	n, err := w.Write(oneByteSlice)
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return io.EOF
-	}
-	return nil
-}
-
 var snappyWriterPool, snappyReaderPool sync.Pool
 
+// estimateSnappyStreamSize estimates the number of bytes
+// needed for encoding length postings. Note that in reality
+// the number of bytes needed could be much bigger if postings
+// different by a lot. Practically, stddev=64 is used.
+func estimateSnappyStreamSize(length int) int {
+	// Snappy stream writes data in chunks up to 65536 in size.
+	// The stream begins with bytes 0xff 0x06 0x00 0x00 's' 'N' 'a' 'P' 'p' 'Y'.
+	// Our encoded data also needs a header.
+	// Each encoded (or uncompressed) chunk needs tag (chunk type 1B + chunk len 3B) + checksum 4B.
+
+	// Mark for encoded data.
+	ret := len(codecHeaderStreamedSnappy)
+	// Magic snappy stream start.
+	ret += 10
+
+	const maxBlockSize = 65536
+
+	length = 5 * length / 4 // estimate 1.25B per posting.
+
+	blocks := length / maxBlockSize
+
+	ret += blocks * snappy.MaxEncodedLen(maxBlockSize)
+	length -= blocks * maxBlockSize
+	if length > 0 {
+		ret += snappy.MaxEncodedLen(length)
+	}
+
+	return ret
+}
+
 func diffVarintSnappyStreamedEncode(p index.Postings, length int) ([]byte, error) {
-	// 1.25 bytes per postings + header + snappy stream beginning.
-	out := make([]byte, 0, 10+snappy.MaxEncodedLen(5*length/4)+len(codecHeaderStreamedSnappy))
-	out = append(out, []byte(codecHeaderStreamedSnappy)...)
-	compressedBuf := bytes.NewBuffer(out[len(codecHeaderStreamedSnappy):])
 	var sw *snappy.Writer
 
-	oneByteSlice := make([]byte, 1)
+	compressedBuf := bytes.NewBuffer(make([]byte, 0, estimateSnappyStreamSize(length)))
+	if n, err := compressedBuf.WriteString(codecHeaderStreamedSnappy); err != nil {
+		return nil, fmt.Errorf("writing streamed snappy header")
+	} else if n != len(codecHeaderStreamedSnappy) {
+		return nil, fmt.Errorf("short-write streamed snappy header")
+	}
+
+	uvarintEncodeBuf := make([]byte, binary.MaxVarintLen64)
 
 	pooledSW := snappyWriterPool.Get()
 	if pooledSW == nil {
@@ -104,9 +120,13 @@ func diffVarintSnappyStreamedEncode(p index.Postings, length int) ([]byte, error
 			return nil, errors.Errorf("postings entries must be in increasing order, current: %d, previous: %d", v, prev)
 		}
 
-		if err := writeUvarint(sw, oneByteSlice, uint64(v-prev)); err != nil {
+		uvarintSize := binary.PutUvarint(uvarintEncodeBuf, uint64(v-prev))
+		if written, err := sw.Write(uvarintEncodeBuf[:uvarintSize]); err != nil {
 			return nil, errors.Wrap(err, "writing uvarint encoded byte")
+		} else if written != uvarintSize {
+			return nil, errors.Wrap(err, "short-write for uvarint encoded byte")
 		}
+
 		prev = v
 	}
 	if p.Err() != nil {
@@ -116,7 +136,7 @@ func diffVarintSnappyStreamedEncode(p index.Postings, length int) ([]byte, error
 		return nil, errors.Wrap(err, "closing snappy stream writer")
 	}
 
-	return out[:len(codecHeaderStreamedSnappy)+compressedBuf.Len()], nil
+	return compressedBuf.Bytes(), nil
 }
 
 func diffVarintSnappyStreamedDecode(input []byte) (closeablePostings, error) {
@@ -193,6 +213,7 @@ func (it *streamedDiffVarintPostings) Seek(x storage.SeriesRef) bool {
 // and applies snappy compression on the result.
 // Returned byte slice starts with codecHeaderSnappy header.
 // Length argument is expected number of postings, used for preallocating buffer.
+// TODO(GiedriusS): remove for v1.0.
 func diffVarintSnappyEncode(p index.Postings, length int) ([]byte, error) {
 	buf, err := diffVarintEncodeNoHeader(p, length)
 	if err != nil {
@@ -253,6 +274,7 @@ func alias(x, y []byte) bool {
 	return cap(x) > 0 && cap(y) > 0 && &x[0:cap(x)][cap(x)-1] == &y[0:cap(y)][cap(y)-1]
 }
 
+// TODO(GiedriusS): remove for v1.0.
 func diffVarintSnappyDecode(input []byte) (closeablePostings, error) {
 	if !isDiffVarintSnappyEncodedPostings(input) {
 		return nil, errors.New("header not found")

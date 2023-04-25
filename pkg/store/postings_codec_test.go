@@ -7,6 +7,7 @@ import (
 	"context"
 	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -256,4 +257,31 @@ func BenchmarkPostingsEncodingDecoding(b *testing.B) {
 			})
 		}
 	}
+}
+
+func FuzzSnappyStreamEncoding(f *testing.F) {
+	f.Add(10, 123)
+
+	f.Fuzz(func(t *testing.T, postingsCount, seedInit int) {
+		if postingsCount <= 0 {
+			return
+		}
+		r := rand.New(rand.NewSource(int64(seedInit)))
+		p := make([]storage.SeriesRef, postingsCount)
+
+		for ix := 1; ix < len(p); ix++ {
+			d := math.Abs(r.NormFloat64()*math.MaxUint64) + 1
+
+			p[ix] = p[ix-1] + storage.SeriesRef(d)
+		}
+
+		sort.Slice(p, func(i, j int) bool {
+			return p[i] < p[j]
+		})
+
+		ps := &uint64Postings{vals: p}
+
+		_, err := diffVarintSnappyStreamedEncode(ps, ps.len())
+		testutil.Ok(t, err)
+	})
 }
