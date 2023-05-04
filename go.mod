@@ -6,7 +6,6 @@ require (
 	cloud.google.com/go/storage v1.27.0 // indirect
 	cloud.google.com/go/trace v1.4.0
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.8.3
-	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 	github.com/alicebob/miniredis/v2 v2.22.0
 	github.com/armon/go-metrics v0.4.0 // indirect
