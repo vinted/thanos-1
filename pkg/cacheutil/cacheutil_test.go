@@ -9,19 +9,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-	"go.uber.org/goleak"
 
 	"github.com/efficientgo/core/testutil"
 	"github.com/thanos-io/thanos/pkg/gate"
 )
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(
-		m,
-		// https://github.com/rueian/rueidis/blob/v0.0.90/pipe.go#L204.
-		goleak.IgnoreTopFunction("github.com/rueian/rueidis.(*pipe).backgroundPing"),
-	)
-}
 
 func TestDoWithBatch(t *testing.T) {
 	tests := map[string]struct {

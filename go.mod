@@ -120,15 +120,13 @@ require (
 )
 
 require (
+	github.com/redis/rueidis v1.0.2-go1.18
 	go.opentelemetry.io/contrib/propagators/autoprop v0.38.0
 	go4.org/intern v0.0.0-20220617035311-6925f38cc365
 	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
 )
 
-require (
-	github.com/redis/rueidis v1.0.2-go1.18 // indirect
-	go4.org/unsafe/assume-no-moving-gc v0.0.0-20230221090011-e4bae7ad2296 // indirect
-)
+require go4.org/unsafe/assume-no-moving-gc v0.0.0-20230221090011-e4bae7ad2296 // indirect
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
