@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -38,9 +37,6 @@ const (
 	IndexHeaderFilename = "index-header"
 	// ChunksDirname is the known dir name for chunks with compressed samples.
 	ChunksDirname = "chunks"
-
-	// DebugMetas is a directory for debug meta files that happen in the past. Useful for debugging.
-	DebugMetas = "debug/metas"
 )
 
 // Download downloads directory that is mean to be block directory. If any of the files
@@ -144,10 +140,6 @@ func upload(ctx context.Context, logger log.Logger, bkt objstore.Bucket, bdir st
 
 	if err := meta.Write(&metaEncoded); err != nil {
 		return errors.Wrap(err, "encode meta file")
-	}
-
-	if err := bkt.Upload(ctx, path.Join(DebugMetas, fmt.Sprintf("%s.json", id)), strings.NewReader(metaEncoded.String())); err != nil {
-		return cleanUp(logger, bkt, id, errors.Wrap(err, "upload debug meta file"))
 	}
 
 	if err := objstore.UploadDir(ctx, logger, bkt, filepath.Join(bdir, ChunksDirname), path.Join(id.String(), ChunksDirname), options...); err != nil {

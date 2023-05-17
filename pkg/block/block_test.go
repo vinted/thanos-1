@@ -556,7 +556,6 @@ func TestUploadCleanup(t *testing.T) {
 
 		// If upload of index fails, block is deleted.
 		testutil.Equals(t, 0, len(bkt.Objects()))
-		testutil.Assert(t, len(bkt.Objects()[path.Join(DebugMetas, fmt.Sprintf("%s.json", b1.String()))]) == 0)
 	}
 
 	{
@@ -570,7 +569,6 @@ func TestUploadCleanup(t *testing.T) {
 		testutil.Assert(t, len(bkt.Objects()[path.Join(b1.String(), ChunksDirname, "000001")]) > 0)
 		testutil.Assert(t, len(bkt.Objects()[path.Join(b1.String(), IndexFilename)]) > 0)
 		testutil.Assert(t, len(bkt.Objects()[path.Join(b1.String(), MetaFilename)]) > 0)
-		testutil.Assert(t, len(bkt.Objects()[path.Join(DebugMetas, fmt.Sprintf("%s.json", b1.String()))]) == 0)
 	}
 }
 
