@@ -76,6 +76,7 @@ usage: thanos sidecar [<flags>]
 Sidecar for Prometheus server.
 
 Flags:
+      --compressed.xor           Use the new compact, compressed XOR stream.
       --grpc-address="0.0.0.0:10901"
                                  Listen ip:port address for gRPC endpoints
                                  (StoreAPI). Make sure this address is routable
@@ -112,6 +113,8 @@ Flags:
       --log.format=logfmt        Log format to use. Possible options: logfmt or
                                  json.
       --log.level=info           Log filtering level.
+      --max-matched-series=0     Maximum number of series can be matched before
+                                 reading series data
       --min-time=0000-01-01T00:00:00Z
                                  Start of time range limit to serve. Thanos
                                  sidecar will serve only metrics, which happened

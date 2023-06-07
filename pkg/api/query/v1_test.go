@@ -1516,7 +1516,7 @@ func TestParseStoreDebugMatchersParam(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			api := QueryAPI{
-				gate: promgate.New(4),
+				gate: promgate.New(4, fmt.Sprintf("%d", i), prometheus.NewRegistry()),
 				queryRangeHist: promauto.With(prometheus.NewRegistry()).NewHistogram(prometheus.HistogramOpts{
 					Name: "query_range_hist",
 				}),

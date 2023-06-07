@@ -139,7 +139,7 @@ func TestUpload(t *testing.T) {
 	{
 		// Full block.
 		testutil.Ok(t, Upload(ctx, log.NewNopLogger(), bkt, path.Join(tmpDir, "test", b1.String()), metadata.NoneFunc))
-		testutil.Equals(t, 3, len(bkt.Objects()))
+		testutil.Equals(t, 4, len(bkt.Objects()))
 		testutil.Equals(t, 3727, len(bkt.Objects()[path.Join(b1.String(), ChunksDirname, "000001")]))
 		testutil.Equals(t, 401, len(bkt.Objects()[path.Join(b1.String(), IndexFilename)]))
 		testutil.Equals(t, 546, len(bkt.Objects()[path.Join(b1.String(), MetaFilename)]))
@@ -189,7 +189,7 @@ func TestUpload(t *testing.T) {
 	{
 		// Test Upload is idempotent.
 		testutil.Ok(t, Upload(ctx, log.NewNopLogger(), bkt, path.Join(tmpDir, "test", b1.String()), metadata.NoneFunc))
-		testutil.Equals(t, 3, len(bkt.Objects()))
+		testutil.Equals(t, 4, len(bkt.Objects()))
 		testutil.Equals(t, 3727, len(bkt.Objects()[path.Join(b1.String(), ChunksDirname, "000001")]))
 		testutil.Equals(t, 401, len(bkt.Objects()[path.Join(b1.String(), IndexFilename)]))
 		testutil.Equals(t, 546, len(bkt.Objects()[path.Join(b1.String(), MetaFilename)]))
@@ -207,7 +207,7 @@ func TestUpload(t *testing.T) {
 		err = Upload(ctx, log.NewNopLogger(), bkt, path.Join(tmpDir, b2.String()), metadata.NoneFunc)
 		testutil.NotOk(t, err)
 		testutil.Equals(t, "empty external labels are not allowed for Thanos block.", err.Error())
-		testutil.Equals(t, 3, len(bkt.Objects()))
+		testutil.Equals(t, 4, len(bkt.Objects()))
 	}
 	{
 		// No external labels with UploadPromBlocks.
@@ -221,7 +221,7 @@ func TestUpload(t *testing.T) {
 		testutil.Ok(t, err)
 		err = UploadPromBlock(ctx, log.NewNopLogger(), bkt, path.Join(tmpDir, b2.String()), metadata.NoneFunc)
 		testutil.Ok(t, err)
-		testutil.Equals(t, 6, len(bkt.Objects()))
+		testutil.Equals(t, 8, len(bkt.Objects()))
 		testutil.Equals(t, 3727, len(bkt.Objects()[path.Join(b2.String(), ChunksDirname, "000001")]))
 		testutil.Equals(t, 401, len(bkt.Objects()[path.Join(b2.String(), IndexFilename)]))
 		testutil.Equals(t, 525, len(bkt.Objects()[path.Join(b2.String(), MetaFilename)]))

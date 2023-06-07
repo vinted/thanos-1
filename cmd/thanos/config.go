@@ -74,12 +74,14 @@ type prometheusConfig struct {
 	getConfigInterval time.Duration
 	getConfigTimeout  time.Duration
 	httpClient        *extflag.PathOrContent
+	useCompressedXOR  bool
 }
 
 func (pc *prometheusConfig) registerFlag(cmd extkingpin.FlagClause) *prometheusConfig {
 	cmd.Flag("prometheus.url",
 		"URL at which to reach Prometheus's API. For better performance use local network.").
 		Default("http://localhost:9090").URLVar(&pc.url)
+	cmd.Flag("compressed.xor", "Use the new compact, compressed XOR stream.").Default("false").BoolVar(&pc.useCompressedXOR)
 	cmd.Flag("prometheus.ready_timeout",
 		"Maximum time to wait for the Prometheus instance to start up").
 		Default("10m").DurationVar(&pc.readyTimeout)

@@ -20,6 +20,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -390,7 +391,7 @@ func TestQuerier_Select_AfterPromQL(t *testing.T) {
 					var actual []series
 					// Boostrap a local store and pass the data through promql.
 					{
-						g := gate.New(2)
+						g := gate.New(2, tcase.name, prometheus.NewRegistry())
 						mq := &mockedQueryable{
 							Creator: func(mint, maxt int64) storage.Querier {
 								return newQuerier(context.Background(), nil, mint, maxt, tcase.replicaLabels, nil, tcase.storeAPI, sc.dedup, 0, true, false, false, g, timeout, nil, NoopSeriesStatsReporter)
@@ -770,7 +771,7 @@ func TestQuerier_Select(t *testing.T) {
 				{dedup: false, expected: tcase.expected},
 				{dedup: true, expected: tcase.expectedAfterDedup},
 			} {
-				g := gate.New(2)
+				g := gate.New(2, tcase.name, prometheus.NewRegistry())
 				q := newQuerier(
 					context.Background(),
 					nil,
@@ -1078,7 +1079,7 @@ func TestQuerierWithDedupUnderstoodByPromQL_Rate(t *testing.T) {
 		)
 
 		timeout := 100 * time.Second
-		g := gate.New(2)
+		g := gate.New(2, "querierwithdedup", prometheus.NewRegistry())
 		q := newQuerier(context.Background(), logger, realSeriesWithStaleMarkerMint, realSeriesWithStaleMarkerMaxt, []string{"replica"}, nil, newProxyStore(s), false, 0, true, false, false, g, timeout, nil, NoopSeriesStatsReporter)
 		t.Cleanup(func() {
 			testutil.Ok(t, q.Close())
@@ -1148,7 +1149,7 @@ func TestQuerierWithDedupUnderstoodByPromQL_Rate(t *testing.T) {
 		)
 
 		timeout := 5 * time.Second
-		g := gate.New(2)
+		g := gate.New(2, "deduptrue", prometheus.NewRegistry())
 		q := newQuerier(context.Background(), logger, realSeriesWithStaleMarkerMint, realSeriesWithStaleMarkerMaxt, []string{"replica"}, nil, newProxyStore(s), true, 0, true, false, false, g, timeout, nil, NoopSeriesStatsReporter)
 		t.Cleanup(func() {
 			testutil.Ok(t, q.Close())
