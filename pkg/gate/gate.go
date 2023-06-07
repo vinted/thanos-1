@@ -10,7 +10,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	promgate "github.com/prometheus/prometheus/util/gate"
 )
 
 // Gate controls the maximum number of concurrently running and waiting queries.
@@ -88,7 +87,7 @@ func (g *gateProducer) New() Gate {
 	if g.maxConcurrent <= 0 {
 		gate = NewNoop()
 	} else {
-		gate = promgate.New(g.maxConcurrent)
+		gate = NewPromGate(g.maxConcurrent)
 	}
 
 	return InstrumentGateDuration(
@@ -161,7 +160,7 @@ func New(reg prometheus.Registerer, maxConcurrent int, opName OperationName) Gat
 	if maxConcurrent <= 0 {
 		gate = NewNoop()
 	} else {
-		gate = promgate.New(maxConcurrent)
+		gate = NewPromGate(maxConcurrent)
 	}
 
 	return InstrumentGateDuration(
@@ -268,4 +267,36 @@ func (g *instrumentedTotalGate) Start(ctx context.Context) error {
 // Done implements the Gate interface.
 func (g *instrumentedTotalGate) Done() {
 	g.g.Done()
+}
+
+// A PromGate controls the maximum number of concurrently running and waiting queries.
+type PromGate struct {
+	ch chan struct{}
+}
+
+// PromGate returns a query gate that limits the number of queries
+// being concurrently executed.
+func NewPromGate(length int) *PromGate {
+	return &PromGate{
+		ch: make(chan struct{}, length),
+	}
+}
+
+// Start blocks until the gate has a free spot or the context is done.
+func (g *PromGate) Start(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case g.ch <- struct{}{}:
+		return nil
+	}
+}
+
+// Done releases a single spot in the gate.
+func (g *PromGate) Done() {
+	select {
+	case <-g.ch:
+	default:
+		panic("gate.Done: more operations done than started")
+	}
 }
