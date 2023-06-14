@@ -12,6 +12,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 
 ### Added
 
+- [#6437](https://github.com/thanos-io/thanos/pull/6437) Receive: make tenant stats limit configurable
 - [#6369](https://github.com/thanos-io/thanos/pull/6369) Receive: add az-aware replication support for Ketama algorithm
 - [#6185](https://github.com/thanos-io/thanos/pull/6185) Tracing: tracing in OTLP support configuring service_name.
 - [#6192](https://github.com/thanos-io/thanos/pull/6192) Store: add flag `bucket-web-label` to select the label to use as timeline title in web UI
@@ -20,6 +21,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#6163](https://github.com/thanos-io/thanos/pull/6163) Receiver: Add hidden flag `--receive-forward-max-backoff` to configure the max backoff for forwarding requests.
 - [#5777](https://github.com/thanos-io/thanos/pull/5777) Receive: Allow specifying tenant-specific external labels in Router Ingestor.
 - [#6352](https://github.com/thanos-io/thanos/pull/6352) Store: Expose store gateway query stats in series response hints.
+- [#6420](https://github.com/thanos-io/thanos/pull/6420) Index Cache: Cache expanded postings.
 
 ### Fixed
 
@@ -37,6 +39,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#6342](https://github.com/thanos-io/thanos/pull/6342) Cache/Redis: Upgrade `rueidis` to v1.0.2 to to improve error handling while shrinking a redis cluster.
 - [#6325](https://github.com/thanos-io/thanos/pull/6325) Store: return gRPC resource exhausted error for byte limiter.
 - [#6399](https://github.com/thanos-io/thanos/pull/6399) *: Fix double-counting bug in http_request_duration metric
+- [#6428](https://github.com/thanos-io/thanos/pull/6428) Report gRPC connnection errors in the logs.
 
 ### Changed
 - [#6168](https://github.com/thanos-io/thanos/pull/6168) Receiver: Make ketama hashring fail early when configured with number of nodes lower than the replication factor.
@@ -54,6 +57,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#6358](https://github.com/thanos-io/thanos/pull/6358) Query: Add +Inf bucket to query duration metrics
 - [#6363](https://github.com/thanos-io/thanos/pull/6363) Store: Check context error when expanding postings.
 - [#6405](https://github.com/thanos-io/thanos/pull/6405) Index Cache: Change postings cache key to include the encoding format used so that older Thanos versions would not try to decode it during the deployment of a new version.
+- [#6432](https://github.com/thanos-io/thanos/pull/6432) Receive: Remove duplicated `gopkg.in/fsnotify.v1` dependency
 
 ### Removed
 
