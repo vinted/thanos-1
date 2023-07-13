@@ -23,6 +23,9 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#6352](https://github.com/thanos-io/thanos/pull/6352) Store: Expose store gateway query stats in series response hints.
 - [#6420](https://github.com/thanos-io/thanos/pull/6420) Index Cache: Cache expanded postings.
 - [#6441](https://github.com/thanos-io/thanos/pull/6441) Compact: Compactor will set `index_stats` in `meta.json` file with max series and chunk size information.
+- [#6466](https://github.com/thanos-io/thanos/pull/6466) Mixin (Receive): add limits alerting for configuration reload and meta-monitoring.
+- [#6467](https://github.com/thanos-io/thanos/pull/6467) Mixin (Receive): add alert for tenant reaching head series limit.
+- [#6528](https://github.com/thanos-io/thanos/pull/6528) Index Cache: Add histogram metric `thanos_store_index_cache_stored_data_size_bytes` for item size.
 
 ### Fixed
 - [#6496](https://github.com/thanos-io/thanos/pull/6496): *: Remove unnecessary configuration reload from `ContentPathReloader` and improve its tests.
