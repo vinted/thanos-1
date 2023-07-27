@@ -19,15 +19,9 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-<<<<<<< HEAD
-	"github.com/prometheus/common/route"
-	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/thanos-io/objstore/client"
-
-=======
->>>>>>> dc337b23e (Upgrade objstore (#6507))
 	commonmodel "github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/client"
