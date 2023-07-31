@@ -249,7 +249,13 @@ func NewRedisClientWithConfig(logger log.Logger, name string, config RedisClient
 func (c *RedisClient) SetAsync(key string, value []byte, ttl time.Duration) error {
 	return c.p.enqueueAsync(func() {
 		start := time.Now()
-		if err := c.client.Do(context.Background(), c.client.B().Set().Key(key).Value(rueidis.BinaryString(value)).ExSeconds(int64(ttl.Seconds())).Build()).Error(); err != nil {
+		var ctx = context.Background()
+		if c.config.WriteTimeout > 0 {
+			timeoutCtx, cancel := context.WithTimeout(ctx, c.config.WriteTimeout)
+			defer cancel()
+			ctx = timeoutCtx
+		}
+		if err := c.client.Do(ctx, c.client.B().Set().Key(key).Value(rueidis.BinaryString(value)).ExSeconds(int64(ttl.Seconds())).Build()).Error(); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to set item into redis", "err", err, "key", key, "value_size", len(value))
 			return
 		}
@@ -268,7 +274,13 @@ func (c *RedisClient) SetMulti(data map[string][]byte, ttl time.Duration) {
 	for k, v := range data {
 		sets = append(sets, c.client.B().Setex().Key(k).Seconds(ittl).Value(rueidis.BinaryString(v)).Build())
 	}
-	for _, resp := range c.client.DoMulti(context.Background(), sets...) {
+	var ctx = context.Background()
+	if c.config.WriteTimeout > 0 {
+		timeoutCtx, cancel := context.WithTimeout(ctx, c.config.WriteTimeout)
+		defer cancel()
+		ctx = timeoutCtx
+	}
+	for _, resp := range c.client.DoMulti(ctx, sets...) {
 		if err := resp.Error(); err != nil {
 			level.Warn(c.logger).Log("msg", "failed to set multi items from redis", "err", err, "items", len(data))
 			return
