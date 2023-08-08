@@ -291,7 +291,7 @@ func (l *lazyRespSet) StoreLabels() map[string]struct{} {
 type lazyRespSet struct {
 	// Generic parameters.
 	span           opentracing.Span
-	cl             storepb.Store_SeriesClient
+	cl             genericSeriesClient
 	closeSeries    context.CancelFunc
 	storeName      string
 	storeLabelSets []labels.Labels
@@ -380,7 +380,7 @@ func newLazyRespSet(
 	storeName string,
 	storeLabelSets []labels.Labels,
 	closeSeries context.CancelFunc,
-	cl storepb.Store_SeriesClient,
+	cl genericSeriesClient,
 	shardMatcher *storepb.ShardMatcher,
 	applySharding bool,
 	emptyStreamResponses prometheus.Counter,
@@ -524,6 +524,10 @@ const (
 	EagerRetrieval RetrievalStrategy = "eager"
 )
 
+type genericSeriesClient interface {
+	Recv() (*storepb.SeriesResponse, error)
+}
+
 func newAsyncRespSet(
 	ctx context.Context,
 	st Client,
@@ -564,14 +568,31 @@ func newAsyncRespSet(
 		level.Debug(logger).Log("msg", "Applying series sharding in the proxy since there is not support in the underlying store", "store", st.String())
 	}
 
-	cl, err := st.Series(seriesCtx, req)
-	if err != nil {
-		err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
+	var genericClient genericSeriesClient
+	if st.DRPCClient() != nil {
+		c := st.DRPCClient()
 
-		span.SetTag("err", err.Error())
-		span.Finish()
-		closeSeries()
-		return nil, err
+		cl, err := c.Series(seriesCtx, req)
+		if err != nil {
+			err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
+
+			span.SetTag("err", err.Error())
+			span.Finish()
+			closeSeries()
+			return nil, err
+		}
+		genericClient = cl
+	} else {
+		cl, err := st.Series(seriesCtx, req)
+		if err != nil {
+			err = errors.Wrapf(err, "fetch series for %s %s", storeID, st)
+
+			span.SetTag("err", err.Error())
+			span.Finish()
+			closeSeries()
+			return nil, err
+		}
+		genericClient = cl
 	}
 
 	var labelsToRemove map[string]struct{}
@@ -595,7 +616,7 @@ func newAsyncRespSet(
 			st.String(),
 			st.LabelSets(),
 			closeSeries,
-			cl,
+			genericClient,
 			shardMatcher,
 			applySharding,
 			emptyStreamResponses,
@@ -607,7 +628,7 @@ func newAsyncRespSet(
 			frameTimeout,
 			st,
 			closeSeries,
-			cl,
+			genericClient,
 			shardMatcher,
 			applySharding,
 			emptyStreamResponses,
@@ -635,7 +656,7 @@ func (l *lazyRespSet) Close() {
 type eagerRespSet struct {
 	// Generic parameters.
 	span opentracing.Span
-	cl   storepb.Store_SeriesClient
+	cl   genericSeriesClient
 	ctx  context.Context
 
 	closeSeries  context.CancelFunc
@@ -658,7 +679,7 @@ func newEagerRespSet(
 	frameTimeout time.Duration,
 	st Client,
 	closeSeries context.CancelFunc,
-	cl storepb.Store_SeriesClient,
+	cl genericSeriesClient,
 	shardMatcher *storepb.ShardMatcher,
 	applySharding bool,
 	emptyStreamResponses prometheus.Counter,

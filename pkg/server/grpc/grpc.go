@@ -19,6 +19,10 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	drpcserver "github.com/thanos-io/thanos/pkg/server/drpc"
+	"golang.org/x/sync/errgroup"
+	"storj.io/drpc/drpcmigrate"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
@@ -121,15 +125,38 @@ func New(logger log.Logger, reg prometheus.Registerer, tracer opentracing.Tracer
 }
 
 // ListenAndServe listens on the TCP network address and handles requests on incoming connections.
-func (s *Server) ListenAndServe() error {
+func (s *Server) ListenAndServe(d *drpcserver.DRPCServer) error {
 	l, err := net.Listen(s.opts.network, s.opts.listen)
 	if err != nil {
 		return errors.Wrapf(err, "listen gRPC on address %s", s.opts.listen)
 	}
 	s.listener = l
 
-	level.Info(s.logger).Log("msg", "listening for serving gRPC", "address", s.opts.listen)
-	return errors.Wrap(s.srv.Serve(s.listener), "serve gRPC")
+	lisMux := drpcmigrate.NewListenMux(l, len(drpcmigrate.DRPCHeader))
+
+	drpcLis := lisMux.Route(drpcmigrate.DRPCHeader)
+
+	gr, gctx := errgroup.WithContext(context.Background())
+
+	gr.Go(func() error {
+		level.Info(s.logger).Log("msg", "listening for serving gRPC", "address", s.opts.listen)
+
+		return errors.Wrap(s.srv.Serve(lisMux.Default()), "serve gRPC")
+	})
+
+	if d != nil {
+		gr.Go(func() error {
+			level.Info(s.logger).Log("msg", "listening for serving dRPC", "address", s.opts.listen)
+
+			return errors.Wrap(d.Serve(gctx, drpcLis), "serve dRPC")
+		})
+	}
+
+	gr.Go(func() error {
+		return lisMux.Run(gctx)
+	})
+
+	return gr.Wait()
 }
 
 // Shutdown gracefully shuts down the server by waiting,

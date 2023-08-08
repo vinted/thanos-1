@@ -183,6 +183,10 @@ type storeRef struct {
 	logger log.Logger
 }
 
+func (sr *storeRef) DRPCClient() storepb.DRPCStoreClient {
+	return nil
+}
+
 func (s *storeRef) Update(labelSets []labels.Labels, minTime, maxTime int64) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()

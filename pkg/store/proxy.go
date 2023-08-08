@@ -66,6 +66,8 @@ type Client interface {
 	// and sorted response is supported by the underlying store.
 	SupportsWithoutReplicaLabels() bool
 
+	DRPCClient() storepb.DRPCStoreClient
+
 	// String returns the string representation of the store client.
 	String() string
 

@@ -20,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	bdrpc "go.bryk.io/pkg/net/drpc"
 	"google.golang.org/grpc"
 
 	"github.com/thanos-io/thanos/pkg/component"
@@ -396,6 +397,17 @@ func (e *EndpointSet) Update(ctx context.Context) {
 				newRef.Close()
 				return
 			}
+			if newRef.HasStoreDRPC() && newRef.drpcClient == nil {
+				nrAddr, _ := newRef.Addr()
+				client, err := bdrpc.NewClient("tcp", nrAddr, bdrpc.WithPoolCapacity(100), bdrpc.WithProtocolHeader())
+				if err != nil {
+					level.Warn(e.logger).Log("msg", "new endpoint creation failed", "err", err, "address", spec.Addr())
+					newRef.Close()
+					return
+				}
+				level.Info(e.logger).Log("msg", "dRPC connection established", "address", spec.Addr())
+				newRef.drpcConn = client
+			}
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -508,12 +520,17 @@ func (e *EndpointSet) GetStoreClients() []store.Client {
 
 	stores := make([]store.Client, 0, len(endpoints))
 	for _, er := range endpoints {
+		var drpcClient storepb.DRPCStoreClient
+		if er.HasStoreDRPC() {
+			drpcClient = storepb.NewDRPCStoreClient(er.drpcConn)
+		}
 		if er.HasStoreAPI() {
 			// Make a new endpointRef with store client.
 			stores = append(stores, &endpointRef{
 				StoreClient: storepb.NewStoreClient(er.cc),
 				addr:        er.addr,
 				metadata:    er.metadata,
+				drpcClient:  drpcClient,
 			})
 		}
 	}
@@ -630,6 +647,13 @@ type endpointRef struct {
 	status   *EndpointStatus
 
 	logger log.Logger
+
+	drpcConn   *bdrpc.Client
+	drpcClient storepb.DRPCStoreClient
+}
+
+func (er *endpointRef) DRPCClient() storepb.DRPCStoreClient {
+	return er.drpcClient
 }
 
 // newEndpointRef creates a new endpointRef with a gRPC channel to the given the IP address.
@@ -730,6 +754,13 @@ func (er *endpointRef) HasStoreAPI() bool {
 	defer er.mtx.RUnlock()
 
 	return er.metadata != nil && er.metadata.Store != nil
+}
+
+func (er *endpointRef) HasStoreDRPC() bool {
+	er.mtx.RLock()
+	defer er.mtx.RUnlock()
+
+	return er.metadata != nil && er.metadata.Store != nil && er.metadata.Store.DrpcEnabled
 }
 
 func (er *endpointRef) HasQueryAPI() bool {
@@ -857,6 +888,9 @@ func (er *endpointRef) Addr() (string, bool) {
 
 func (er *endpointRef) Close() {
 	runutil.CloseWithLogOnErr(er.logger, er.cc, fmt.Sprintf("endpoint %v connection closed", er.addr))
+	if er.drpcConn != nil {
+		runutil.CloseWithLogOnErr(er.logger, er.drpcConn, fmt.Sprintf("endpoint %v connection closed", er.addr))
+	}
 }
 
 func (er *endpointRef) apisPresent() []string {

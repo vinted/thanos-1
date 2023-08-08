@@ -369,7 +369,7 @@ func runReceive(
 			func() error {
 				level.Info(logger).Log("msg", "listening for StoreAPI and WritableStoreAPI gRPC", "address", conf.grpcConfig.bindAddress)
 				statusProber.Healthy()
-				return srv.ListenAndServe()
+				return srv.ListenAndServe(nil)
 			},
 			func(err error) {
 				statusProber.NotReady(err)

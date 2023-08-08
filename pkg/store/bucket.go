@@ -1234,8 +1234,37 @@ func debugFoundBlockSetOverview(logger log.Logger, mint, maxt, maxResolutionMill
 	level.Debug(logger).Log("msg", "Blocks source resolutions", "blocks", len(bs), "Maximum Resolution", maxResolutionMillis, "mint", mint, "maxt", maxt, "lset", lset.String(), "spans", strings.Join(parts, "\n"))
 }
 
-// Series implements the storepb.StoreServer interface.
+type seriesServer interface {
+	Send(*storepb.SeriesResponse) error
+	Context() context.Context
+}
+
+type BucketStoreDRPC struct {
+	BS *BucketStore
+}
+
+func (st *BucketStoreDRPC) Series(r *storepb.SeriesRequest, s storepb.DRPCStore_SeriesStream) error {
+	return st.BS.genericSeries(r, s)
+}
+
+func (st *BucketStoreDRPC) Info(ctx context.Context, r *storepb.InfoRequest) (*storepb.InfoResponse, error) {
+	return st.BS.Info(ctx, r)
+}
+
+func (st *BucketStoreDRPC) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	return st.BS.LabelNames(ctx, r)
+}
+
+func (st *BucketStoreDRPC) LabelValues(ctx context.Context, r *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	return st.BS.LabelValues(ctx, r)
+}
+
 func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
+	return s.genericSeries(req, srv)
+}
+
+// Series implements the storepb.StoreServer interface.
+func (s *BucketStore) genericSeries(req *storepb.SeriesRequest, srv seriesServer) (err error) {
 	if s.queryGate != nil {
 		tracing.DoInSpan(srv.Context(), "store_query_gate_ismyturn", func(ctx context.Context) {
 			err = s.queryGate.Start(srv.Context())

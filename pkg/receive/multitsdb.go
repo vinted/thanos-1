@@ -102,6 +102,10 @@ type localClient struct {
 	tsdbOpts      *tsdb.Options
 }
 
+func (l *localClient) DRPCClient() storepb.DRPCStoreClient {
+	return nil
+}
+
 func NewLocalClient(
 	c storepb.StoreClient,
 	labelSetFunc func() []labelpb.ZLabelSet,

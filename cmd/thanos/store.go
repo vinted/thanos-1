@@ -41,11 +41,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/prober"
 	"github.com/thanos-io/thanos/pkg/runutil"
+	drpcserver "github.com/thanos-io/thanos/pkg/server/drpc"
 	grpcserver "github.com/thanos-io/thanos/pkg/server/grpc"
 	httpserver "github.com/thanos-io/thanos/pkg/server/http"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/tls"
 	"github.com/thanos-io/thanos/pkg/ui"
 )
@@ -88,7 +90,12 @@ type storeConfig struct {
 	reqLogConfig                *extflag.PathOrContent
 	lazyIndexReaderEnabled      bool
 	lazyIndexReaderIdleTimeout  time.Duration
+	featureList                 []string
 }
+
+const (
+	drpcServer = "drpc-server"
+)
 
 func (sc *storeConfig) registerFlag(cmd extkingpin.FlagClause) {
 	sc.httpConfig = *sc.httpConfig.registerFlag(cmd)
@@ -179,6 +186,8 @@ func (sc *storeConfig) registerFlag(cmd extkingpin.FlagClause) {
 	cmd.Flag("store.enable-index-header-lazy-reader", "If true, Store Gateway will lazy memory map index-header only once the block is required by a query.").
 		Default("false").BoolVar(&sc.lazyIndexReaderEnabled)
 
+	cmd.Flag("enable-feature", "Comma separated experimental feature names to enable.The current list of features is "+drpcServer+".").Default("").StringsVar(&sc.featureList)
+
 	cmd.Flag("store.index-header-lazy-reader-idle-timeout", "If index-header lazy reader is enabled and this idle timeout setting is > 0, memory map-ed index-headers will be automatically released after 'idle timeout' inactivity.").
 		Hidden().Default("5m").DurationVar(&sc.lazyIndexReaderIdleTimeout)
 
@@ -251,6 +260,14 @@ func runStore(
 	dataDir := conf.dataDir
 	if !conf.cacheIndexHeader {
 		dataDir = ""
+	}
+
+	drpcEnabled := false
+	for _, f := range conf.featureList {
+		if f == drpcServer {
+			drpcEnabled = true
+			break
+		}
 	}
 
 	grpcProbe := prober.NewGRPC()
@@ -463,11 +480,22 @@ func runStore(
 					SupportsSharding:             true,
 					SupportsWithoutReplicaLabels: true,
 					TsdbInfos:                    bs.TSDBInfos(),
+					DrpcEnabled:                  drpcEnabled,
 				}
 			}
 			return nil
 		}),
 	)
+
+	var d *drpcserver.DRPCServer
+	if drpcEnabled {
+		d = drpcserver.NewServer(logger, reg)
+
+		err = storepb.DRPCRegisterStore(d.GetMux(), &store.BucketStoreDRPC{BS: bs})
+		if err != nil {
+			return err
+		}
+	}
 
 	// Start query (proxy) gRPC StoreAPI.
 	{
@@ -489,7 +517,7 @@ func runStore(
 		g.Add(func() error {
 			<-bucketStoreReady
 			statusProber.Ready()
-			return s.ListenAndServe()
+			return s.ListenAndServe(d)
 		}, func(err error) {
 			statusProber.NotReady(err)
 			s.Shutdown(err)
