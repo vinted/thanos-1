@@ -2935,7 +2935,9 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []storage.Series
 		if err := bytesLimiter.Reserve(uint64(end - start)); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching series: %s", err)
 		}
+		r.mtx.Lock()
 		r.stats.DataDownloadedSizeSum += units.Base2Bytes(end - start)
+		r.mtx.Unlock()
 	}
 
 	b, err := r.block.readIndexRange(ctx, int64(start), int64(end-start))
@@ -3153,6 +3155,10 @@ type bucketChunkReader struct {
 	mtx        sync.Mutex
 	stats      *queryStats
 	chunkBytes []*[]byte // Byte slice to return to the chunk pool on close.
+
+	loadingChunksMtx  sync.Mutex
+	loadingChunks     bool
+	finishLoadingChks chan struct{}
 }
 
 func newBucketChunkReader(block *bucketBlock) *bucketChunkReader {
@@ -3167,9 +3173,22 @@ func (r *bucketChunkReader) reset() {
 	for i := range r.toLoad {
 		r.toLoad[i] = r.toLoad[i][:0]
 	}
+	r.loadingChunksMtx.Lock()
+	r.loadingChunks = false
+	r.finishLoadingChks = make(chan struct{})
+	r.loadingChunksMtx.Unlock()
 }
 
 func (r *bucketChunkReader) Close() error {
+	// NOTE(GiedriusS): we need to wait until loading chunks because loading
+	// chunks modifies r.block.chunkPool.
+	r.loadingChunksMtx.Lock()
+	loadingChks := r.loadingChunks
+	r.loadingChunksMtx.Unlock()
+
+	if loadingChks {
+		<-r.finishLoadingChks
+	}
 	r.block.pendingReaders.Done()
 
 	for _, b := range r.chunkBytes {
@@ -3194,6 +3213,18 @@ func (r *bucketChunkReader) addLoad(id chunks.ChunkRef, seriesEntry, chunk int) 
 
 // load loads all added chunks and saves resulting aggrs to refs.
 func (r *bucketChunkReader) load(ctx context.Context, res []seriesEntry, aggrs []storepb.Aggr, calculateChunkChecksum bool, bytesLimiter BytesLimiter) error {
+	r.loadingChunksMtx.Lock()
+	r.loadingChunks = true
+	r.loadingChunksMtx.Unlock()
+
+	defer func() {
+		r.loadingChunksMtx.Lock()
+		r.loadingChunks = false
+		r.loadingChunksMtx.Unlock()
+
+		close(r.finishLoadingChks)
+	}()
+
 	g, ctx := errgroup.WithContext(ctx)
 
 	for seq, pIdxs := range r.toLoad {
@@ -3315,17 +3346,16 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 		}
 
 		// If we didn't fetch enough data for the chunk, fetch more.
-		r.mtx.Unlock()
-		locked = false
-
 		fetchBegin = time.Now()
-
 		// Read entire chunk into new buffer.
 		// TODO: readChunkRange call could be avoided for any chunk but last in this particular part.
 		if err := bytesLimiter.Reserve(uint64(chunkLen)); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching chunks: %s", err)
 		}
 		r.stats.DataDownloadedSizeSum += units.Base2Bytes(chunkLen)
+		r.mtx.Unlock()
+		locked = false
+
 		nb, err := r.block.readChunkRange(ctx, seq, int64(pIdx.offset), int64(chunkLen), []byteRange{{offset: 0, length: chunkLen}})
 		if err != nil {
 			return errors.Wrapf(err, "preloaded chunk too small, expecting %d, and failed to fetch full chunk", chunkLen)
