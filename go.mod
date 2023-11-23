@@ -128,7 +128,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	go.opentelemetry.io/contrib/propagators/ot v1.13.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.16.0 // indirect
-	go4.org/unsafe/assume-no-moving-gc v0.0.0-20230209150437-ee73d164e760 // indirect
+	go4.org/unsafe/assume-no-moving-gc v0.0.0-20231121144256-b99613f794b6 // indirect
 )
 
 require (
