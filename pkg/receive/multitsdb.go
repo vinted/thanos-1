@@ -61,6 +61,7 @@ type MultiTSDB struct {
 	allowOutOfOrderUpload bool
 	hashFunc              metadata.HashFunc
 	hashringConfigs       []HashringConfig
+	uploadCompactedBlocks bool
 }
 
 // NewMultiTSDB creates new MultiTSDB.
@@ -74,6 +75,7 @@ func NewMultiTSDB(
 	tenantLabelName string,
 	bucket objstore.Bucket,
 	allowOutOfOrderUpload bool,
+	allowCompactedUpload bool,
 	hashFunc metadata.HashFunc,
 ) *MultiTSDB {
 	if l == nil {
@@ -91,6 +93,7 @@ func NewMultiTSDB(
 		tenantLabelName:       tenantLabelName,
 		bucket:                bucket,
 		allowOutOfOrderUpload: allowOutOfOrderUpload,
+		uploadCompactedBlocks: allowCompactedUpload,
 		hashFunc:              hashFunc,
 	}
 }
@@ -266,8 +269,7 @@ func (t *MultiTSDB) Flush() error {
 		level.Info(t.logger).Log("msg", "flushing TSDB", "tenant", id)
 		wg.Add(1)
 		go func() {
-			head := db.Head()
-			if err := db.CompactHead(tsdb.NewRangeHead(head, head.MinTime(), head.MaxTime())); err != nil {
+			if err := t.flushHead(db); err != nil {
 				errmtx.Lock()
 				merr.Add(err)
 				errmtx.Unlock()
@@ -278,6 +280,20 @@ func (t *MultiTSDB) Flush() error {
 
 	wg.Wait()
 	return merr.Err()
+}
+
+func (t *MultiTSDB) flushHead(db *tsdb.DB) error {
+	head := db.Head()
+	if head.MinTime() == head.MaxTime() {
+		return db.CompactHead(tsdb.NewRangeHead(head, head.MinTime(), head.MaxTime()))
+	}
+	blockAlignedMaxt := head.MaxTime() - (head.MaxTime() % t.tsdbOpts.MaxBlockDuration)
+	// Flush a well aligned TSDB block.
+	if err := db.CompactHead(tsdb.NewRangeHead(head, head.MinTime(), blockAlignedMaxt-1)); err != nil {
+		return err
+	}
+	// Flush the remainder of the head.
+	return db.CompactHead(tsdb.NewRangeHead(head, head.MinTime(), head.MaxTime()-1))
 }
 
 func (t *MultiTSDB) Close() error {
@@ -392,7 +408,7 @@ func (t *MultiTSDB) pruneTSDB(ctx context.Context, logger log.Logger, tenantInst
 	}
 
 	level.Info(logger).Log("msg", "Compacting tenant")
-	if err := tdb.CompactHead(tsdb.NewRangeHead(head, head.MinTime(), head.MaxTime())); err != nil {
+	if err := t.flushHead(tdb); err != nil {
 		return false, err
 	}
 
@@ -592,6 +608,7 @@ func (t *MultiTSDB) startTSDB(logger log.Logger, tenantID string, tenant *tenant
 		return err
 	}
 	var ship *shipper.Shipper
+
 	if t.bucket != nil {
 		ship = shipper.New(
 			logger,
@@ -600,7 +617,7 @@ func (t *MultiTSDB) startTSDB(logger log.Logger, tenantID string, tenant *tenant
 			t.bucket,
 			func() labels.Labels { return lset },
 			metadata.ReceiveSource,
-			nil,
+			func() bool { return t.uploadCompactedBlocks },
 			t.allowOutOfOrderUpload,
 			t.hashFunc,
 		)
