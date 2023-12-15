@@ -378,6 +378,7 @@ func runCompact(
 		insBkt,
 		conf.compactionConcurrency,
 		conf.skipBlockWithOutOfOrderChunks,
+		enableVerticalCompaction,
 	)
 	if err != nil {
 		return errors.Wrap(err, "create bucket compactor")

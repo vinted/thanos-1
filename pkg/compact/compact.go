@@ -758,9 +758,14 @@ type CompactionLifecycleCallback interface {
 }
 
 type DefaultCompactionLifecycleCallback struct {
+	VerticalCompactionEnabled bool
 }
 
 func (c DefaultCompactionLifecycleCallback) PreCompactionCallback(_ context.Context, _ log.Logger, _ *Group, toCompactBlocks []*metadata.Meta) error {
+	// Duplicated sources is handled by vertical compaction through merging series together.
+	if c.VerticalCompactionEnabled {
+		return nil
+	}
 	// Due to #183 we verify that none of the blocks in the plan have overlapping sources.
 	// This is one potential source of how we could end up with duplicated chunks.
 	uniqueSources := map[ulid.ULID]struct{}{}
@@ -1287,6 +1292,7 @@ func NewBucketCompactor(
 	bkt objstore.Bucket,
 	concurrency int,
 	skipBlocksWithOutOfOrderChunks bool,
+	enableVerticalCompaction bool,
 ) (*BucketCompactor, error) {
 	if concurrency <= 0 {
 		return nil, errors.Errorf("invalid concurrency level (%d), concurrency level must be > 0", concurrency)
@@ -1298,7 +1304,9 @@ func NewBucketCompactor(
 		planner,
 		comp,
 		DefaultBlockDeletableChecker{},
-		DefaultCompactionLifecycleCallback{},
+		DefaultCompactionLifecycleCallback{
+			VerticalCompactionEnabled: enableVerticalCompaction,
+		},
 		compactDir,
 		bkt,
 		concurrency,
