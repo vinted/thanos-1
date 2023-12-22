@@ -268,6 +268,6 @@ replace (
 	k8s.io/klog/v2 => github.com/simonpasquier/klog-gokit/v3 v3.0.0
 )
 
-replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20230605130252-fb29ac940e9f
+replace github.com/prometheus/prometheus => github.com/vinted/prometheus v1.8.2-0.20231222080551-13bd068cbc59
 
 replace github.com/thanos-io/promql-engine => github.com/vinted/promql-engine v0.0.0-20230607131632-52afa29e6b44

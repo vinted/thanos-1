@@ -920,8 +920,8 @@ github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVK
 github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6+uUTzImX/AauajbLI56U=
 github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijbERA=
 github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
-github.com/vinted/prometheus v1.8.2-0.20230605130252-fb29ac940e9f h1:8QsV9dYie4rVwq7Nx8Tn0sgUqW5Zpj2HNltYINaWB3g=
-github.com/vinted/prometheus v1.8.2-0.20230605130252-fb29ac940e9f/go.mod h1:jb6RryShYMiWFAIDoSDvichHUejQuzFl4nFWhMnsvAY=
+github.com/vinted/prometheus v1.8.2-0.20231222080551-13bd068cbc59 h1:2UpaIyCIXiMw81xhTbbIafa0/7i+m1jZXaZKmmJuK7s=
+github.com/vinted/prometheus v1.8.2-0.20231222080551-13bd068cbc59/go.mod h1:jb6RryShYMiWFAIDoSDvichHUejQuzFl4nFWhMnsvAY=
 github.com/vinted/promql-engine v0.0.0-20230607131632-52afa29e6b44 h1:DI/OYxoE7ItPyboeLqF9sc9jG46mSSyvKG3SANqbETQ=
 github.com/vinted/promql-engine v0.0.0-20230607131632-52afa29e6b44/go.mod h1:dWMfKCnZEUIA25eiUV/FtirPaujoYDEjlZSLnCoaRic=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
