@@ -819,6 +819,9 @@ func (h *Handler) distributeTimeseriesToReplicas(
 	defer h.mtx.RUnlock()
 	remoteWrites := make(map[endpointReplica]map[string]trackedSeries)
 	localWrites := make(map[endpointReplica]map[string]trackedSeries)
+
+	const useMetricLabelsTenant = "_use_metric_labels_tenant_"
+
 	for tsIndex, ts := range timeseries {
 		var tenant = tenantHTTP
 
@@ -827,39 +830,61 @@ func (h *Handler) distributeTimeseriesToReplicas(
 		tenantLabel := lbls.Get(metaLabelTenantID)
 		if tenantLabel != "" {
 			tenant = tenantLabel
-
-			newLabels := labels.NewBuilder(lbls)
-			newLabels.Del(metaLabelTenantID)
-
-			ts.Labels = labelpb.ZLabelsFromPromLabels(
-				newLabels.Labels(),
-			)
 		}
 		for _, rn := range replicas {
 			endpoint, err := h.hashring.GetN(tenant, &ts, rn)
 			if err != nil {
 				return nil, nil, err
 			}
+
+			var writeTenant = tenant
+
 			endpointReplica := endpointReplica{endpoint: endpoint, replica: rn}
 			var writeDestination = remoteWrites
 			if endpoint == h.options.Endpoint {
 				writeDestination = localWrites
+
+				if tenantHTTP == useMetricLabelsTenant {
+					if tenantLabel == "" {
+						return nil, nil, fmt.Errorf("tenant label not found in metric labels")
+					}
+					writeTenant = tenantLabel
+
+					newLabels := labels.NewBuilder(lbls)
+					newLabels.Del(metaLabelTenantID)
+
+					ts.Labels = labelpb.ZLabelsFromPromLabels(
+						newLabels.Labels(),
+					)
+				}
+			} else {
+				writeTenant = useMetricLabelsTenant
+
+				if tenantLabel == "" {
+					newLabels := labels.NewBuilder(lbls)
+					newLabels.Set(metaLabelTenantID, tenantHTTP)
+
+					ts.Labels = labelpb.ZLabelsFromPromLabels(
+						newLabels.Labels(),
+					)
+				}
 			}
+
 			writeableSeries, ok := writeDestination[endpointReplica]
 			if !ok {
 				writeDestination[endpointReplica] = map[string]trackedSeries{
-					tenant: {
+					writeTenant: {
 						seriesIDs:  make([]int, 0),
 						timeSeries: make([]prompb.TimeSeries, 0),
 					},
 				}
 			}
-			tenantSeries := writeableSeries[tenant]
+			tenantSeries := writeableSeries[writeTenant]
 
 			tenantSeries.timeSeries = append(tenantSeries.timeSeries, ts)
 			tenantSeries.seriesIDs = append(tenantSeries.seriesIDs, tsIndex)
 
-			writeDestination[endpointReplica][tenant] = tenantSeries
+			writeDestination[endpointReplica][writeTenant] = tenantSeries
 		}
 	}
 	return localWrites, remoteWrites, nil
