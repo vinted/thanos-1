@@ -981,19 +981,27 @@ func TestReceiveExtractsTenant(t *testing.T) {
 	testutil.Ok(t, err)
 	t.Cleanup(e2ethanos.CleanScenario(t, e))
 
-	i := e2ethanos.NewReceiveBuilder(e, "ingestor").WithIngestionEnabled().Init()
-	testutil.Ok(t, e2e.StartAndWaitReady(i))
+	i1 := e2ethanos.NewReceiveBuilder(e, "ingestor").WithIngestionEnabled().Init()
+	testutil.Ok(t, e2e.StartAndWaitReady(i1))
+
+	i2 := e2ethanos.NewReceiveBuilder(e, "ingestor2").WithIngestionEnabled().Init()
+	testutil.Ok(t, e2e.StartAndWaitReady(i2))
+
+	i3 := e2ethanos.NewReceiveBuilder(e, "ingestor3").WithIngestionEnabled().Init()
+	testutil.Ok(t, e2e.StartAndWaitReady(i3))
 
 	h := receive.HashringConfig{
 		Endpoints: []receive.Endpoint{
-			{Address: i.InternalEndpoint("grpc")},
+			{Address: i1.InternalEndpoint("grpc")},
+			{Address: i2.InternalEndpoint("grpc")},
+			{Address: i3.InternalEndpoint("grpc")},
 		},
 	}
 
-	r := e2ethanos.NewReceiveBuilder(e, "router").WithRouting(1, h).Init()
+	r := e2ethanos.NewReceiveBuilder(e, "router").WithRouting(3, h).Init()
 	testutil.Ok(t, e2e.StartAndWaitReady(r))
 
-	q := e2ethanos.NewQuerierBuilder(e, "1", i.InternalEndpoint("grpc")).Init()
+	q := e2ethanos.NewQuerierBuilder(e, "1", i1.InternalEndpoint("grpc"), i2.InternalEndpoint("grpc"), i3.InternalEndpoint("grpc")).Init()
 	testutil.Ok(t, e2e.StartAndWaitReady(q))
 
 	require.NoError(t, runutil.RetryWithLog(logkit.NewLogfmtLogger(os.Stdout), 1*time.Second, make(<-chan struct{}), func() error {
@@ -1021,8 +1029,15 @@ func TestReceiveExtractsTenant(t *testing.T) {
 		})
 	}))
 
-	testutil.Ok(t, i.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-1")), e2emon.WaitMissingMetrics()))
-	testutil.Ok(t, i.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-2")), e2emon.WaitMissingMetrics()))
+	testutil.Ok(t, i1.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-1")), e2emon.WaitMissingMetrics()))
+	testutil.Ok(t, i1.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-2")), e2emon.WaitMissingMetrics()))
+
+	testutil.Ok(t, i2.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-1")), e2emon.WaitMissingMetrics()))
+	testutil.Ok(t, i2.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-2")), e2emon.WaitMissingMetrics()))
+
+	testutil.Ok(t, i3.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-1")), e2emon.WaitMissingMetrics()))
+	testutil.Ok(t, i3.WaitSumMetricsWithOptions(e2emon.Equals(0), []string{"prometheus_tsdb_blocks_loaded"}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "tenant", "tenant-2")), e2emon.WaitMissingMetrics()))
+
 }
 
 func TestReceiveGlob(t *testing.T) {
