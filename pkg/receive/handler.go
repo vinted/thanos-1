@@ -747,7 +747,6 @@ func (h *Handler) fanoutForward(ctx context.Context, params remoteWriteParams) (
 			tenants.WriteString(", ")
 		}
 	}
-	numTimeseries *= len(params.replicas)
 
 	logTags := []interface{}{"tenants", tenants.String()}
 	if id, ok := middleware.RequestIDFromContext(ctx); ok {
@@ -883,10 +882,10 @@ func (h *Handler) distributeTimeseriesToReplicas(
 
 				tenantSeries.timeSeries = append(tenantSeries.timeSeries, ts)
 				tenantSeries.seriesIDs = append(tenantSeries.seriesIDs, seriesID)
-				seriesID++
 
 				writeDestination[endpointReplica][tenant] = tenantSeries
 			}
+			seriesID++
 		}
 	}
 
