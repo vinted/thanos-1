@@ -410,9 +410,13 @@ func (mc *matchersCache) convertMatchers(ms ...LabelMatcher) ([]*labels.Matcher,
 }
 
 func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
-	hasher := mc.hasherPool.Get().(*xxhash.Digest)
-	if hasher == nil {
+	var hasher *xxhash.Digest
+
+	hasherPooled := mc.hasherPool.Get()
+	if hasherPooled == nil {
 		hasher = xxhash.New()
+	} else {
+		hasher = hasherPooled.(*xxhash.Digest)
 	}
 	hasher.Reset()
 	defer mc.hasherPool.Put(hasher)
