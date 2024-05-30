@@ -418,10 +418,10 @@ func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher
 	defer mc.hasherPool.Put(hasher)
 
 	for _, m := range ms {
-		hasher.WriteString(m.Name)
-		hasher.WriteString(m.Value)
+		_, _ = hasher.WriteString(m.Name)
+		_, _ = hasher.WriteString(m.Value)
 		// NOTE(GiedriusS): these can only be 0-4 so we can safely cast to byte.
-		hasher.Write([]byte{byte(m.Type)})
+		_, _ = hasher.Write([]byte{byte(m.Type)})
 	}
 
 	h := hasher.Sum64()
@@ -439,7 +439,7 @@ func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher
 	return convert, nil
 }
 
-func mustNewLRU(size int) *lru.Cache {
+func mustNewLRU() *lru.Cache {
 	var lruSize int
 
 	lruSizeParam := os.Getenv("THANOS_LRU_SIZE")
@@ -461,7 +461,7 @@ func mustNewLRU(size int) *lru.Cache {
 }
 
 var mc *matchersCache = &matchersCache{
-	c: mustNewLRU(1000),
+	c: mustNewLRU(),
 }
 
 // MatchersToPromMatchers returns Prometheus matchers from proto matchers.
