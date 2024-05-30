@@ -505,7 +505,7 @@ func newAsyncRespSet(
 	var closeSeries context.CancelFunc
 
 	storeAddr, isLocalStore := st.Addr()
-	storeID := labelpb.PromLabelSetsToString(st.LabelSets())
+	storeID := st.String()
 	if storeID == "" {
 		storeID = "Store Gateway"
 	}
@@ -556,7 +556,7 @@ func newAsyncRespSet(
 		return newLazyRespSet(
 			span,
 			frameTimeout,
-			st.String(),
+			storeID,
 			st.LabelSets(),
 			closeSeries,
 			cl,
@@ -568,7 +568,7 @@ func newAsyncRespSet(
 		return newEagerRespSet(
 			span,
 			frameTimeout,
-			st.String(),
+			storeID,
 			st.LabelSets(),
 			closeSeries,
 			cl,
