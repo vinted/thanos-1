@@ -7,11 +7,15 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/gogo/protobuf/types"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/codes"
@@ -374,9 +378,12 @@ func PromMatchersToMatchers(ms ...*labels.Matcher) ([]LabelMatcher, error) {
 	return res, nil
 }
 
-// MatchersToPromMatchers returns Prometheus matchers from proto matchers.
-// NOTE: It allocates memory.
-func MatchersToPromMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
+type matchersCache struct {
+	hasherPool sync.Pool
+	c          *lru.Cache
+}
+
+func (mc *matchersCache) convertMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
 	res := make([]*labels.Matcher, 0, len(ms))
 	for _, m := range ms {
 		var t labels.MatchType
@@ -400,6 +407,67 @@ func MatchersToPromMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
 		res = append(res, m)
 	}
 	return res, nil
+}
+
+func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
+	hasher := mc.hasherPool.Get().(*xxhash.Digest)
+	if hasher == nil {
+		hasher = xxhash.New()
+	}
+	hasher.Reset()
+	defer mc.hasherPool.Put(hasher)
+
+	for _, m := range ms {
+		hasher.WriteString(m.Name)
+		hasher.WriteString(m.Value)
+		// NOTE(GiedriusS): these can only be 0-4 so we can safely cast to byte.
+		hasher.Write([]byte{byte(m.Type)})
+	}
+
+	h := hasher.Sum64()
+
+	if val, ok := mc.c.Get(h); ok {
+		return val.([]*labels.Matcher), nil
+	}
+
+	convert, err := mc.convertMatchers(ms...)
+	if err != nil {
+		return nil, fmt.Errorf("converting matchers: %w", err)
+	}
+
+	mc.c.Add(h, convert)
+	return convert, nil
+}
+
+func mustNewLRU(size int) *lru.Cache {
+	var lruSize int
+
+	lruSizeParam := os.Getenv("THANOS_LRU_SIZE")
+	if lruSizeParam == "" {
+		lruSize = 1000
+	} else {
+		parsedLRUSize, err := strconv.Atoi(lruSizeParam)
+		if err != nil {
+			panic(fmt.Sprintf("parsing %s: %v", lruSizeParam, err))
+		}
+		lruSize = parsedLRUSize
+	}
+
+	c, err := lru.New(lruSize)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+var mc *matchersCache = &matchersCache{
+	c: mustNewLRU(1000),
+}
+
+// MatchersToPromMatchers returns Prometheus matchers from proto matchers.
+// NOTE: It allocates memory.
+func MatchersToPromMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
+	return mc.getOrSetMatchers(ms...)
 }
 
 // MatchersToString converts label matchers to string format.
