@@ -409,6 +409,13 @@ func (mc *matchersCache) convertMatchers(ms ...LabelMatcher) ([]*labels.Matcher,
 	return res, nil
 }
 
+func copyMatcherSlice(in []*labels.Matcher) []*labels.Matcher {
+	out := make([]*labels.Matcher, 0, len(in))
+	out = append(out, in...)
+
+	return out
+}
+
 func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher, error) {
 	var hasher *xxhash.Digest
 
@@ -431,7 +438,7 @@ func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher
 	h := hasher.Sum64()
 
 	if val, ok := mc.c.Get(h); ok {
-		return val.([]*labels.Matcher), nil
+		return copyMatcherSlice(val.([]*labels.Matcher)), nil
 	}
 
 	convert, err := mc.convertMatchers(ms...)
@@ -440,7 +447,7 @@ func (mc *matchersCache) getOrSetMatchers(ms ...LabelMatcher) ([]*labels.Matcher
 	}
 
 	mc.c.Add(h, convert)
-	return convert, nil
+	return copyMatcherSlice(convert), nil
 }
 
 func mustNewLRU() *lru.Cache {
