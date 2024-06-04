@@ -29,9 +29,6 @@ func (s *ShardMatcher) IsSharded() bool {
 }
 
 func (s *ShardMatcher) Close() {
-	if s == nil {
-		return
-	}
 	if s.buffers != nil {
 		s.buffers.Put(s.buf)
 	}
