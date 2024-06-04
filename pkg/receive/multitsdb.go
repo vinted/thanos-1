@@ -6,6 +6,7 @@ package receive
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,6 +27,9 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
+	gmetadata "google.golang.org/grpc/metadata"
+
+	"google.golang.org/grpc"
 
 	"github.com/thanos-io/thanos/pkg/api/status"
 	"github.com/thanos-io/thanos/pkg/info/infopb"
@@ -97,21 +101,75 @@ func NewMultiTSDB(
 }
 
 type localClient struct {
-	storepb.StoreClient
 	store *store.TSDBStore
 	desc  string
 }
 
-func newLocalClient(c storepb.StoreClient, store *store.TSDBStore) *localClient {
+func newLocalClient(store *store.TSDBStore) *localClient {
 	mint, maxt := store.TimeRange()
+
 	return &localClient{
-		StoreClient: c,
-		store:       store,
-		desc: fmt.Sprintf(
-			"LabelSets: %v MinTime: %d MaxTime: %d",
-			labelpb.PromLabelSetsToString(labelpb.ZLabelSetsToPromLabelSets(store.LabelSet()...)), mint, maxt,
-		),
+		store: store,
+		desc:  fmt.Sprintf("LabelSets: %v MinTime: %d MaxTime: %d", labelpb.PromLabelSetsToString(labelpb.ZLabelSetsToPromLabelSets(store.LabelSet()...)), mint, maxt),
 	}
+}
+
+type seriesClientMapper struct {
+	s   []*storepb.Series
+	ctx context.Context
+}
+
+func (m *seriesClientMapper) Recv() (*storepb.SeriesResponse, error) {
+	if len(m.s) == 0 {
+		return nil, io.EOF
+	}
+	s := m.s[0]
+	m.s = m.s[1:]
+	return storepb.NewSeriesResponse(s), nil
+}
+
+func (m *seriesClientMapper) Header() (gmetadata.MD, error) {
+	return nil, nil
+}
+
+func (m *seriesClientMapper) Trailer() gmetadata.MD {
+	return nil
+}
+
+func (m *seriesClientMapper) CloseSend() error {
+	return nil
+}
+
+func (m *seriesClientMapper) Context() context.Context {
+	return m.ctx
+}
+
+func (m *seriesClientMapper) RecvMsg(_ interface{}) error {
+	return nil
+}
+
+func (m *seriesClientMapper) SendMsg(_ interface{}) error {
+	return nil
+}
+
+func (l *localClient) Info(ctx context.Context, in *storepb.InfoRequest, opts ...grpc.CallOption) (*storepb.InfoResponse, error) {
+	return l.store.Info(ctx, in)
+}
+
+func (l *localClient) Series(ctx context.Context, in *storepb.SeriesRequest, opts ...grpc.CallOption) (storepb.Store_SeriesClient, error) {
+	series, err := l.store.SeriesLocal(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return &seriesClientMapper{s: series, ctx: ctx}, nil
+}
+
+func (l *localClient) LabelNames(ctx context.Context, in *storepb.LabelNamesRequest, opts ...grpc.CallOption) (*storepb.LabelNamesResponse, error) {
+	return l.store.LabelNames(ctx, in)
+}
+
+func (l *localClient) LabelValues(ctx context.Context, in *storepb.LabelValuesRequest, opts ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
+	return l.store.LabelValues(ctx, in)
 }
 
 func (l *localClient) LabelSets() []labels.Labels {
@@ -216,8 +274,7 @@ func (t *tenant) client(logger log.Logger) store.Client {
 		return nil
 	}
 
-	client := storepb.ServerAsClient(store.NewRecoverableStoreServer(logger, tsdbStore), 0)
-	return newLocalClient(client, tsdbStore)
+	return newLocalClient(tsdbStore)
 }
 
 func (t *tenant) exemplars() *exemplars.TSDB {
