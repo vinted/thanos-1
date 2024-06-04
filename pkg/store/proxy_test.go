@@ -2069,13 +2069,13 @@ func TestDedupRespHeap_Deduplication(t *testing.T) {
 
 	for _, tcase := range []struct {
 		responses []*storepb.SeriesResponse
-		testFn    func(responses []*storepb.SeriesResponse, h *responseDeduplicator)
+		testFn    func(responses []*storepb.SeriesResponse, h *dedupResponseHeap)
 		tname     string
 	}{
 		{
 			tname:     "edge case with zero responses",
 			responses: []*storepb.SeriesResponse{},
-			testFn: func(responses []*storepb.SeriesResponse, h *responseDeduplicator) {
+			testFn: func(responses []*storepb.SeriesResponse, h *dedupResponseHeap) {
 				testutil.Equals(t, false, h.Next())
 
 				callAtExpectPanic := func() {
@@ -2107,7 +2107,7 @@ func TestDedupRespHeap_Deduplication(t *testing.T) {
 					},
 				},
 			},
-			testFn: func(responses []*storepb.SeriesResponse, h *responseDeduplicator) {
+			testFn: func(responses []*storepb.SeriesResponse, h *dedupResponseHeap) {
 				testutil.Equals(t, true, h.Next())
 				resp := h.At()
 				testutil.Equals(t, responses[0], resp)
@@ -2149,7 +2149,7 @@ func TestDedupRespHeap_Deduplication(t *testing.T) {
 					},
 				},
 			},
-			testFn: func(responses []*storepb.SeriesResponse, h *responseDeduplicator) {
+			testFn: func(responses []*storepb.SeriesResponse, h *dedupResponseHeap) {
 				testutil.Equals(t, true, h.Next())
 				resp := h.At()
 				testutil.Equals(t, responses[0], resp)
@@ -2158,9 +2158,8 @@ func TestDedupRespHeap_Deduplication(t *testing.T) {
 		},
 	} {
 		t.Run(tcase.tname, func(t *testing.T) {
-			h := NewResponseDeduplicator(NewProxyResponseLoserTree(
+			h := NewDedupResponseHeap(NewProxyResponseHeap(
 				&eagerRespSet{
-					closeSeries:       func() {},
 					wg:                &sync.WaitGroup{},
 					bufferedResponses: tcase.responses,
 				},
