@@ -1544,7 +1544,7 @@ func checkNetworkRequests(t *testing.T, addr string) {
 	ctx, cancel := chromedp.NewContext(new(emptyCtx))
 	t.Cleanup(cancel)
 
-	testutil.Ok(t, runutil.Retry(1*time.Minute, ctx.Done(), func() error {
+	testutil.Ok(t, runutil.RetryWithLog(log.NewLogfmtLogger(os.Stderr), 1*time.Second, ctx.Done(), func() error {
 		var networkErrors []string
 
 		// Listen for failed network requests and push them to an array.

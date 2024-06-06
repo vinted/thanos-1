@@ -120,6 +120,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/onsi/gomega v1.27.10
 	github.com/prometheus-community/prom-label-proxy v0.7.0
+	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
 	go.opentelemetry.io/contrib/propagators/autoprop v0.38.0
 	go4.org/intern v0.0.0-20230525184215-6c62f75575cb
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
@@ -127,6 +128,7 @@ require (
 
 require (
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
+	github.com/dgryski/go-metro v0.0.0-20200812162917-85c65e2d0165 // indirect
 	github.com/go-openapi/runtime v0.26.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect

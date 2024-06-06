@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/filter"
 	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store"
@@ -169,6 +170,7 @@ func NewStoreSet(
 
 type storeRef struct {
 	storepb.StoreClient
+	filter.AllowAllMetricNameFilter
 
 	mtx  sync.RWMutex
 	cc   *grpc.ClientConn

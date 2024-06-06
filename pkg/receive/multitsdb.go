@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/thanos-io/thanos/pkg/api/status"
+	"github.com/thanos-io/thanos/pkg/filter"
 	"github.com/thanos-io/thanos/pkg/info/infopb"
 
 	"github.com/thanos-io/objstore"
@@ -103,14 +104,16 @@ func NewMultiTSDB(
 type localClient struct {
 	store *store.TSDBStore
 	desc  string
+	filter.MetricNameFilter
 }
 
 func newLocalClient(store *store.TSDBStore) *localClient {
 	mint, maxt := store.TimeRange()
 
 	return &localClient{
-		store: store,
-		desc:  fmt.Sprintf("LabelSets: %v MinTime: %d MaxTime: %d", labelpb.PromLabelSetsToString(labelpb.ZLabelSetsToPromLabelSets(store.LabelSet()...)), mint, maxt),
+		MetricNameFilter: store.MetricNameFilter,
+		store:            store,
+		desc:             fmt.Sprintf("LabelSets: %v MinTime: %d MaxTime: %d", labelpb.PromLabelSetsToString(labelpb.ZLabelSetsToPromLabelSets(store.LabelSet()...)), mint, maxt),
 	}
 }
 
@@ -306,6 +309,9 @@ func (t *tenant) set(storeTSDB *store.TSDBStore, tenantTSDB *tsdb.DB, ship *ship
 }
 
 func (t *tenant) setComponents(storeTSDB *store.TSDBStore, ship *shipper.Shipper, exemplarsTSDB *exemplars.TSDB, tenantTSDB *tsdb.DB) {
+	if storeTSDB == nil && t.storeTSDB != nil {
+		t.storeTSDB.Close()
+	}
 	t.storeTSDB = storeTSDB
 	t.ship = ship
 	t.exemplarsTSDB = exemplarsTSDB
