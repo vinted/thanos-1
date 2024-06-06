@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/filter"
 	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -71,6 +72,8 @@ type Client interface {
 	// Addr returns address of the store client. If second parameter is true, the client
 	// represents a local client (server-as-client) and has no remote address.
 	Addr() (addr string, isLocalClient bool)
+
+	filter.MetricNameFilter
 }
 
 // ProxyStore implements the store API that proxies request to all given underlying stores.
@@ -406,6 +409,19 @@ func storeMatches(ctx context.Context, s Client, debugLogging bool, mint, maxt i
 		}
 		return false, reason
 	}
+
+	for _, m := range matchers {
+		if m.Type == labels.MatchEqual && m.Name == labels.MetricName {
+			if !s.MatchesMetricName(m.Value) {
+				if debugLogging {
+					reason = fmt.Sprintf("metric name %v does not match filter", m.Value)
+				}
+				return false, reason
+			}
+			break
+		}
+	}
+
 	return true, ""
 }
 

@@ -6,12 +6,14 @@ package storetestutil
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/thanos-io/thanos/pkg/filter"
 	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
 type TestClient struct {
 	storepb.StoreClient
+	filter.AllowAllMetricNameFilter
 
 	Name string
 

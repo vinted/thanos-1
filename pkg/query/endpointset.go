@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/thanos-io/thanos/pkg/api/query/querypb"
+	"github.com/thanos-io/thanos/pkg/filter"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -636,6 +637,7 @@ func (e *EndpointSet) GetEndpointStatus() []EndpointStatus {
 
 type endpointRef struct {
 	storepb.StoreClient
+	filter.AllowAllMetricNameFilter
 
 	mtx      sync.RWMutex
 	cc       *grpc.ClientConn
