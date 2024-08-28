@@ -551,6 +551,8 @@ func (t *MultiTSDB) Sync(ctx context.Context) (int, error) {
 	)
 
 	for tenantID, tenant := range t.tenants {
+		tenant := tenant
+
 		level.Debug(t.logger).Log("msg", "uploading block for tenant", "tenant", tenantID)
 		tenant.mtx.RLock()
 		s := tenant.ship
