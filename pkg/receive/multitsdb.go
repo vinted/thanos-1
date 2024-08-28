@@ -238,13 +238,6 @@ type tenant struct {
 }
 
 func (t *tenant) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
-	t.mtx.RLock()
-	defer t.mtx.RUnlock()
-
-	if t.tsdb == nil {
-		return nil
-	}
-
 	deletable := t.blocksToDeleteFn(t.tsdb)(blocks)
 	if t.ship == nil {
 		return deletable
@@ -293,12 +286,6 @@ func (t *tenant) exemplars() *exemplars.TSDB {
 	t.mtx.RLock()
 	defer t.mtx.RUnlock()
 	return t.exemplarsTSDB
-}
-
-func (t *tenant) shipper() *shipper.Shipper {
-	t.mtx.RLock()
-	defer t.mtx.RUnlock()
-	return t.ship
 }
 
 func (t *tenant) set(storeTSDB *store.TSDBStore, tenantTSDB *tsdb.DB, ship *shipper.Shipper, exemplarsTSDB *exemplars.TSDB) {
@@ -564,14 +551,19 @@ func (t *MultiTSDB) Sync(ctx context.Context) (int, error) {
 	)
 
 	for tenantID, tenant := range t.tenants {
+		tenant := tenant
+
 		level.Debug(t.logger).Log("msg", "uploading block for tenant", "tenant", tenantID)
-		s := tenant.shipper()
+		tenant.mtx.RLock()
+		s := tenant.ship
 		if s == nil {
+			tenant.mtx.RUnlock()
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			up, err := s.Sync(ctx)
+			tenant.mtx.RUnlock()
 			if err != nil {
 				errmtx.Lock()
 				merr.Add(errors.Wrap(err, "upload"))
