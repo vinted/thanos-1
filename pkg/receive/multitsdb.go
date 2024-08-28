@@ -288,12 +288,6 @@ func (t *tenant) exemplars() *exemplars.TSDB {
 	return t.exemplarsTSDB
 }
 
-func (t *tenant) shipper() *shipper.Shipper {
-	t.mtx.RLock()
-	defer t.mtx.RUnlock()
-	return t.ship
-}
-
 func (t *tenant) set(storeTSDB *store.TSDBStore, tenantTSDB *tsdb.DB, ship *shipper.Shipper, exemplarsTSDB *exemplars.TSDB) {
 	t.readyS.Set(tenantTSDB)
 	t.mtx.Lock()
@@ -558,13 +552,16 @@ func (t *MultiTSDB) Sync(ctx context.Context) (int, error) {
 
 	for tenantID, tenant := range t.tenants {
 		level.Debug(t.logger).Log("msg", "uploading block for tenant", "tenant", tenantID)
-		s := tenant.shipper()
+		tenant.mtx.RLock()
+		s := tenant.ship
 		if s == nil {
+			tenant.mtx.RUnlock()
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			up, err := s.Sync(ctx)
+			tenant.mtx.RUnlock()
 			if err != nil {
 				errmtx.Lock()
 				merr.Add(errors.Wrap(err, "upload"))
