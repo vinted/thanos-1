@@ -195,7 +195,7 @@ func TestQueryEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
+		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(t, db), 2, timeout),
 		engineFactory:         ef,
 		defaultEngine:         PromqlEnginePrometheus,
 		lookbackDeltaCreate:   func(m int64) time.Duration { return time.Duration(0) },
@@ -648,7 +648,7 @@ func TestQueryExplainEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
+		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(t, db), 2, timeout),
 		engineFactory:         ef,
 		defaultEngine:         PromqlEnginePrometheus,
 		lookbackDeltaCreate:   func(m int64) time.Duration { return time.Duration(0) },
@@ -712,7 +712,7 @@ func TestQueryAnalyzeEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
+		queryableCreate:       query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(t, db), 2, timeout),
 		engineFactory:         ef,
 		defaultEngine:         PromqlEnginePrometheus,
 		lookbackDeltaCreate:   func(m int64) time.Duration { return time.Duration(0) },
@@ -777,10 +777,13 @@ func TestQueryAnalyzeEndpoints(t *testing.T) {
 	}
 }
 
-func newProxyStoreWithTSDBStore(db store.TSDBReader) *store.ProxyStore {
+func newProxyStoreWithTSDBStore(t *testing.T, db store.TSDBReader) *store.ProxyStore {
+	tsdbStore := store.NewTSDBStore(nil, db, component.Query, nil)
+
+	t.Cleanup(tsdbStore.Close)
 	c := &storetestutil.TestClient{
 		Name:        "1",
-		StoreClient: storepb.ServerAsClient(store.NewTSDBStore(nil, db, component.Query, nil), 0),
+		StoreClient: storepb.ServerAsClient(tsdbStore, 0),
 		MinTime:     math.MinInt64, MaxTime: math.MaxInt64,
 	}
 
@@ -886,7 +889,7 @@ func TestMetadataEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:     query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
+		queryableCreate:     query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(t, db), 2, timeout),
 		engineFactory:       ef,
 		defaultEngine:       PromqlEnginePrometheus,
 		lookbackDeltaCreate: func(m int64) time.Duration { return time.Duration(0) },
@@ -902,7 +905,7 @@ func TestMetadataEndpoints(t *testing.T) {
 		baseAPI: &baseAPI.BaseAPI{
 			Now: func() time.Time { return now },
 		},
-		queryableCreate:          query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(db), 2, timeout),
+		queryableCreate:          query.NewQueryableCreator(nil, nil, newProxyStoreWithTSDBStore(t, db), 2, timeout),
 		engineFactory:            ef,
 		defaultEngine:            PromqlEnginePrometheus,
 		lookbackDeltaCreate:      func(m int64) time.Duration { return time.Duration(0) },

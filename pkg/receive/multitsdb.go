@@ -392,6 +392,7 @@ func (t *MultiTSDB) Close() error {
 			level.Error(t.logger).Log("msg", "closing TSDB failed; not ready", "tenant", id)
 			continue
 		}
+		tenant.storeTSDB.Close()
 		level.Info(t.logger).Log("msg", "closing TSDB", "tenant", id)
 		merr.Add(db.Close())
 	}

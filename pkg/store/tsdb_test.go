@@ -40,6 +40,7 @@ func TestTSDBStore_Info(t *testing.T) {
 	testutil.Ok(t, err)
 
 	tsdbStore := NewTSDBStore(nil, db, component.Rule, labels.FromStrings("region", "eu-west"))
+	t.Cleanup(tsdbStore.Close)
 
 	resp, err := tsdbStore.Info(ctx, &storepb.InfoRequest{})
 	testutil.Ok(t, err)
@@ -74,6 +75,7 @@ func TestTSDBStore_Series_ChunkChecksum(t *testing.T) {
 	testutil.Ok(t, err)
 
 	tsdbStore := NewTSDBStore(nil, db, component.Rule, labels.FromStrings("region", "eu-west"))
+	t.Cleanup(tsdbStore.Close)
 
 	appender := db.Appender(context.Background())
 
@@ -114,6 +116,7 @@ func TestTSDBStore_Series(t *testing.T) {
 	testutil.Ok(t, err)
 
 	tsdbStore := NewTSDBStore(nil, db, component.Rule, labels.FromStrings("region", "eu-west"))
+	t.Cleanup(tsdbStore.Close)
 
 	appender := db.Appender(context.Background())
 
@@ -286,6 +289,7 @@ func TestTSDBStore_SeriesAccessWithDelegateClosing(t *testing.T) {
 
 	extLabels := labels.FromStrings("ext", "1")
 	store := NewTSDBStore(logger, &mockedStartTimeDB{DBReadOnly: db, startTime: 0}, component.Receive, extLabels)
+	t.Cleanup(store.Close)
 
 	srv := storetestutil.NewSeriesServer(context.Background())
 	csrv := &delegatorServer{SeriesServer: srv}
@@ -449,6 +453,7 @@ func TestTSDBStore_SeriesAccessWithoutDelegateClosing(t *testing.T) {
 
 	extLabels := labels.FromStrings("ext", "1")
 	store := NewTSDBStore(logger, &mockedStartTimeDB{DBReadOnly: db, startTime: 0}, component.Receive, extLabels)
+	t.Cleanup(store.Close)
 
 	srv := storetestutil.NewSeriesServer(context.Background())
 	t.Run("call series and access results", func(t *testing.T) {
@@ -590,6 +595,7 @@ func benchTSDBStoreSeries(t testutil.TB, totalSamples, totalSeries int) {
 
 	extLabels := labels.FromStrings("ext", "1")
 	store := NewTSDBStore(logger, &mockedStartTimeDB{DBReadOnly: db, startTime: 0}, component.Receive, extLabels)
+	t.Cleanup(store.Close)
 
 	var expected []*storepb.Series
 	for _, resp := range resps {
