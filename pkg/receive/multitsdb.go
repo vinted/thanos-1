@@ -238,9 +238,6 @@ type tenant struct {
 }
 
 func (t *tenant) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
-	t.mtx.RLock()
-	defer t.mtx.RUnlock()
-
 	if t.tsdb == nil {
 		return nil
 	}
