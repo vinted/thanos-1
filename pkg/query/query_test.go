@@ -48,10 +48,13 @@ func TestQuerier_Proxy(t *testing.T) {
 				m, err := storepb.PromMatchersToMatchers(st.matchers...)
 				testutil.Ok(t, err)
 
+				tsdbStore := store.NewTSDBStore(logger, st.storage.DB, component.Debug, nil)
+				t.Cleanup(tsdbStore.Close)
+
 				// TODO(bwplotka): Parse external labels.
 				clients = append(clients, &storetestutil.TestClient{
 					Name:        fmt.Sprintf("store number %v", i),
-					StoreClient: storepb.ServerAsClient(selectedStore(store.NewTSDBStore(logger, st.storage.DB, component.Debug, nil), m, st.mint, st.maxt), 0),
+					StoreClient: storepb.ServerAsClient(selectedStore(tsdbStore, m, st.mint, st.maxt), 0),
 					MinTime:     st.mint,
 					MaxTime:     st.maxt,
 				})

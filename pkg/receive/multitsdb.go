@@ -238,6 +238,10 @@ type tenant struct {
 }
 
 func (t *tenant) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
+	if t.tsdb == nil {
+		return nil
+	}
+
 	deletable := t.blocksToDeleteFn(t.tsdb)(blocks)
 	if t.ship == nil {
 		return deletable
@@ -385,6 +389,7 @@ func (t *MultiTSDB) Close() error {
 			level.Error(t.logger).Log("msg", "closing TSDB failed; not ready", "tenant", id)
 			continue
 		}
+		tenant.storeTSDB.Close()
 		level.Info(t.logger).Log("msg", "closing TSDB", "tenant", id)
 		merr.Add(db.Close())
 	}
