@@ -288,6 +288,11 @@ func runCompact(
 		cf.UpdateOnChange(func(blocks []metadata.Meta, err error) {
 			api.SetLoaded(blocks, err)
 		})
+
+		var syncMetasTimeout = conf.waitInterval
+		if !conf.wait {
+			syncMetasTimeout = 0
+		}
 		sy, err = compact.NewMetaSyncer(
 			logger,
 			reg,
@@ -297,6 +302,7 @@ func runCompact(
 			ignoreDeletionMarkFilter,
 			compactMetrics.blocksMarked.WithLabelValues(metadata.DeletionMarkFilename, ""),
 			compactMetrics.garbageCollectedBlocks,
+			syncMetasTimeout,
 		)
 		if err != nil {
 			return errors.Wrap(err, "create syncer")
