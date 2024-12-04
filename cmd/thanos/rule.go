@@ -109,6 +109,7 @@ type ruleConfig struct {
 	ignoredLabelNames  []string
 	storeRateLimits    store.SeriesSelectLimits
 	ruleConcurrentEval int64
+	ruleGlobalOffset   time.Duration
 
 	extendedFunctionsEnabled bool
 }
@@ -158,6 +159,7 @@ func registerRule(app *extkingpin.App) {
 	cmd.Flag("restore-ignored-label", "Label names to be ignored when restoring alerts from the remote storage. This is only used in stateless mode.").
 		StringsVar(&conf.ignoredLabelNames)
 	cmd.Flag("rule-concurrent-evaluation", "How many rules can be evaluated concurrently. Default is 1.").Default("1").Int64Var(&conf.ruleConcurrentEval)
+	cmd.Flag("rule-global-offset", "Global offset to be added to each rule evaluation. Useful if you are using remote_write to help with occasional ingestion latency.").Default("0s").DurationVar(&conf.ruleGlobalOffset)
 
 	cmd.Flag("grpc-query-endpoint", "Addresses of Thanos gRPC query API servers (repeatable). The scheme may be prefixed with 'dns+' or 'dnssrv+' to detect Thanos API servers through respective DNS lookups.").
 		PlaceHolder("<endpoint>").StringsVar(&conf.grpcQueryEndpoints)
@@ -639,6 +641,11 @@ func runRule(
 		if conf.ruleConcurrentEval > 1 {
 			managerOpts.MaxConcurrentEvals = conf.ruleConcurrentEval
 			managerOpts.ConcurrentEvalsEnabled = true
+		}
+		if conf.ruleGlobalOffset > 0 {
+			managerOpts.DefaultRuleQueryOffset = func() time.Duration {
+				return conf.ruleGlobalOffset
+			}
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
