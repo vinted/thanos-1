@@ -3515,9 +3515,9 @@ func (r *bucketChunkReader) Close() error {
 	}
 	r.block.pendingReaders.Done()
 
-	//for _, b := range r.chunkBytes {
-	//	r.block.chunkPool.Put(b)
-	//}
+	for _, b := range r.chunkBytes {
+		r.block.chunkPool.Put(b)
+	}
 	return nil
 }
 

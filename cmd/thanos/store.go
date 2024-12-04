@@ -40,6 +40,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/logging"
 	"github.com/thanos-io/thanos/pkg/model"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/prober"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	grpcserver "github.com/thanos-io/thanos/pkg/server/grpc"
@@ -388,10 +389,7 @@ func runStore(
 
 	queriesGate := gate.New(extprom.WrapRegistererWithPrefix("thanos_bucket_store_series_", reg), int(conf.maxConcurrency), gate.Queries)
 
-	chunkPool, err := store.NewDefaultChunkBytesPool(uint64(conf.chunkPoolSize))
-	if err != nil {
-		return errors.Wrap(err, "create chunk pool")
-	}
+	chunkPool := pool.NoopPool[byte]{}
 
 	options := []store.BucketStoreOption{
 		store.WithLogger(logger),
