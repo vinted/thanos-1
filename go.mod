@@ -119,6 +119,7 @@ require (
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/onsi/gomega v1.34.0
 	github.com/prometheus-community/prom-label-proxy v0.8.1-0.20240127162815-c1195f9aabc0
+	github.com/segmentio/fasthash v1.0.3
 	github.com/seiflotfy/cuckoofilter v0.0.0-20240715131351-a2f2c23f1771
 	go.opentelemetry.io/contrib/propagators/autoprop v0.54.0
 	go4.org/intern v0.0.0-20230525184215-6c62f75575cb
