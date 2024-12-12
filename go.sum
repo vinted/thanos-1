@@ -2271,8 +2271,8 @@ github.com/uber/jaeger-client-go v2.30.0+incompatible/go.mod h1:WVhlPFC8FDjOFMMW
 github.com/uber/jaeger-lib v2.2.0+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6+uUTzImX/AauajbLI56U=
 github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVKhn2Um6rjCsSsg=
 github.com/uber/jaeger-lib v2.4.1+incompatible/go.mod h1:ComeNDZlWwrWnDv8aPp0Ba6+uUTzImX/AauajbLI56U=
-github.com/vinted/prometheus v1.8.2-0.20241104091239-2b97618294c8 h1:yLIYtyb+wGxhvSDYGV7ySkXXMx+S/TQj6dlzsWMG35w=
-github.com/vinted/prometheus v1.8.2-0.20241104091239-2b97618294c8/go.mod h1:n3/PY5be8xgYe+DUCjKdK0eSmDSQBQ6ZOoIUGmO9vEY=
+github.com/vinted/prometheus v0.0.0-20241212114003-53a808bbaf43 h1:3PZq7phU4tTEF8It55AHuM8mAx18edD9guvlWiAHyz8=
+github.com/vinted/prometheus v0.0.0-20241212114003-53a808bbaf43/go.mod h1:n3/PY5be8xgYe+DUCjKdK0eSmDSQBQ6ZOoIUGmO9vEY=
 github.com/vultr/govultr/v2 v2.17.2 h1:gej/rwr91Puc/tgh+j33p/BLR16UrIPnSr+AIwYWZQs=
 github.com/vultr/govultr/v2 v2.17.2/go.mod h1:ZFOKGWmgjytfyjeyAdhQlSWwTjh2ig+X49cAp50dzXI=
 github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5 h1:nORobjToZAvi54wcuUXLq+XG2Rsr0XEizy5aHBHvqWQ=
