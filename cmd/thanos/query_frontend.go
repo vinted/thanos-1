@@ -395,7 +395,7 @@ func runQueryFrontend(
 
 	if grpcServerConfig.bindAddress != "" {
 		level.Info(logger).Log("msg", "starting gRPC server", "address", grpcServerConfig.bindAddress)
-		tlsCfg, err := tls.NewServerConfig(log.With(logger, "protocol", "gRPC"), grpcServerConfig.tlsSrvCert, grpcServerConfig.tlsSrvKey, grpcServerConfig.tlsSrvClientCA, grpcServerConfig.tlsMinVersion)
+		tlsCfg, err := tls.NewServerConfig(log.With(logger, "protocol", "gRPC"), grpcServerConfig.tlsSrvCert, grpcServerConfig.tlsSrvKey, grpcServerConfig.tlsSrvClientCA)
 		if err != nil {
 			return errors.Wrap(err, "setup gRPC server")
 		}
@@ -418,6 +418,9 @@ func runQueryFrontend(
 			statusProber.NotReady(err)
 			s.Shutdown(err)
 		})
+	} else {
+		level.Info(logger).Log("msg", "gRPC server is disabled")
+		statusProber.Ready()
 	}
 
 	level.Info(logger).Log("msg", "starting query frontend")
