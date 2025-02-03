@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/promqlsmith"
+	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
@@ -816,7 +817,13 @@ metafile_content_ttl: 0s`
 	// thanos_blocks_meta_synced: 1x loadedMeta 0x labelExcludedMeta 0x TooFreshMeta.
 	for _, st := range []*e2eobs.Observable{store1, store2, store3} {
 		t.Run(st.Name(), func(t *testing.T) {
-			testutil.Ok(t, st.WaitSumMetrics(e2emon.Equals(1), "thanos_blocks_meta_synced"))
+			testutil.Ok(t, st.WaitSumMetricsWithOptions(e2emon.Equals(1), []string{"thanos_blocks_meta_synced"}, e2emon.WaitMissingMetrics(), e2emon.WithWaitBackoff(
+				&backoff.Config{
+					Min:        1 * time.Second,
+					Max:        10 * time.Second,
+					MaxRetries: 30,
+				},
+			)))
 			testutil.Ok(t, st.WaitSumMetrics(e2emon.Equals(0), "thanos_blocks_meta_sync_failures_total"))
 
 			testutil.Ok(t, st.WaitSumMetrics(e2emon.Equals(1), "thanos_bucket_store_blocks_loaded"))
@@ -826,23 +833,27 @@ metafile_content_ttl: 0s`
 	}
 
 	t.Run("query with groupcache loading from object storage", func(t *testing.T) {
-		queryAndAssertSeries(t, ctx, q.Endpoint("http"), func() string { return testQuery },
-			time.Now, promclient.QueryOptions{
-				Deduplicate: false,
-			},
-			[]model.Metric{
-				{
-					"a":       "1",
-					"b":       "2",
-					"ext1":    "value1",
-					"replica": "1",
+		for i := 0; i < 3; i++ {
+			queryAndAssertSeries(t, ctx, q.Endpoint("http"), func() string { return testQuery },
+				time.Now, promclient.QueryOptions{
+					Deduplicate: false,
 				},
-			},
-		)
+				[]model.Metric{
+					{
+						"a":       "1",
+						"b":       "2",
+						"ext1":    "value1",
+						"replica": "1",
+					},
+				},
+			)
+		}
 
 		for _, st := range []*e2eobs.Observable{store1, store2, store3} {
-			testutil.Ok(t, st.WaitSumMetricsWithOptions(e2emon.Greater(0), []string{`thanos_cache_groupcache_loads_total`}))
-			testutil.Ok(t, st.WaitSumMetricsWithOptions(e2emon.Greater(0), []string{`thanos_store_bucket_cache_operation_hits_total`}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "config", "chunks"))))
+			t.Run(st.Name(), func(t *testing.T) {
+				testutil.Ok(t, st.WaitSumMetricsWithOptions(e2emon.Greater(0), []string{`thanos_cache_groupcache_loads_total`}))
+				testutil.Ok(t, st.WaitSumMetricsWithOptions(e2emon.Greater(0), []string{`thanos_store_bucket_cache_operation_hits_total`}, e2emon.WithLabelMatchers(matchers.MustNewMatcher(matchers.MatchEqual, "config", "chunks"))))
+			})
 		}
 	})
 

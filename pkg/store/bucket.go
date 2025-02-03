@@ -670,6 +670,7 @@ func (s *BucketStore) SyncBlocks(ctx context.Context) error {
 		go func() {
 			for meta := range blockc {
 				if err := s.addBlock(ctx, meta); err != nil {
+					level.Warn(s.logger).Log("msg", "adding block failed", "err", err, "id", meta.ULID.String())
 					continue
 				}
 			}
@@ -694,17 +695,32 @@ func (s *BucketStore) SyncBlocks(ctx context.Context) error {
 		return metaFetchErr
 	}
 
+	var cleanupBlocks []*bucketBlock
+	s.mtx.RLock()
+	keys := make([]ulid.ULID, 0, len(s.blocks))
+	for k := range s.blocks {
+		keys = append(keys, k)
+	}
+	s.mtx.RUnlock()
+
 	// Drop all blocks that are no longer present in the bucket.
-	for id := range s.blocks {
+	for _, id := range keys {
 		if _, ok := metas[id]; ok {
 			continue
 		}
-		if err := s.removeBlock(id); err != nil {
-			level.Warn(s.logger).Log("msg", "drop of outdated block failed", "block", id, "err", err)
-			s.metrics.blockDropFailures.Inc()
-		}
-		level.Info(s.logger).Log("msg", "dropped outdated block", "block", id)
+
+		s.mtx.Lock()
+		b := s.blocks[id]
+		lset := labels.FromMap(b.meta.Thanos.Labels)
+		s.blockSets[lset.Hash()].remove(id)
+		delete(s.blocks, id)
+		s.mtx.Unlock()
+
+		s.metrics.blocksLoaded.Dec()
 		s.metrics.blockDrops.Inc()
+		cleanupBlocks = append(cleanupBlocks, b)
+
+		level.Info(s.logger).Log("msg", "dropped outdated block", "block", id)
 	}
 
 	// Sync advertise labels.
@@ -717,6 +733,25 @@ func (s *BucketStore) SyncBlocks(ctx context.Context) error {
 		return strings.Compare(s.advLabelSets[i].String(), s.advLabelSets[j].String()) < 0
 	})
 	s.mtx.Unlock()
+
+	go func() {
+		for _, b := range cleanupBlocks {
+			var errs prometheus.MultiError
+
+			errs.Append(b.Close())
+
+			if b.dir != "" {
+				errs.Append(os.RemoveAll(b.dir))
+			}
+
+			if len(errs) == 0 {
+				return
+			}
+
+			level.Warn(s.logger).Log("msg", "close of outdated block failed", "block", b.meta.ULID.String(), "err", errs.Error())
+			s.metrics.blockDropFailures.Inc()
+		}
+	}()
 	return nil
 }
 
@@ -847,32 +882,6 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 	s.metrics.blocksLoaded.Inc()
 	s.metrics.lastLoadedBlock.SetToCurrentTime()
 	return nil
-}
-
-func (s *BucketStore) removeBlock(id ulid.ULID) error {
-	s.mtx.Lock()
-	b, ok := s.blocks[id]
-	if ok {
-		lset := labels.FromMap(b.meta.Thanos.Labels)
-		s.blockSets[lset.Hash()].remove(id)
-		delete(s.blocks, id)
-	}
-	s.mtx.Unlock()
-
-	if !ok {
-		return nil
-	}
-
-	s.metrics.blocksLoaded.Dec()
-	if err := b.Close(); err != nil {
-		return errors.Wrap(err, "close block")
-	}
-
-	if b.dir == "" {
-		return nil
-	}
-
-	return os.RemoveAll(b.dir)
 }
 
 // TimeRange returns the minimum and maximum timestamp of data available in the store.
