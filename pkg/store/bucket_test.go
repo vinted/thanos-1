@@ -1780,7 +1780,10 @@ func TestBucketSeries_OneBlock_InMemIndexCacheSegfault(t *testing.T) {
 		testutil.Equals(t, numSeries, len(srv.SeriesSet))
 	})
 	t.Run("remove second block. Cache stays. Ask for first again.", func(t *testing.T) {
-		testutil.Ok(t, store.removeBlock(b2.meta.ULID))
+		b, _ := store.blocks[b2.meta.ULID]
+		lset := labels.FromMap(b.meta.Thanos.Labels)
+		store.blockSets[lset.Hash()].remove(b2.meta.ULID)
+		delete(store.blocks, b2.meta.ULID)
 
 		srv := newStoreSeriesServer(context.Background())
 		testutil.Ok(t, store.Series(&storepb.SeriesRequest{
